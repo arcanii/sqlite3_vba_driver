@@ -14,6 +14,10 @@ Versions
 =======
 0.1.0 - 9 March, 2026 - Initial Version (passed 122 tests) - my inaugural github check-in  
 
+Releases Page
+=======
+https://github.com/arcanii/sqlite3_vba_driver/releases
+
 ---
 
 ## Features
