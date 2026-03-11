@@ -3,7 +3,7 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
@@ -13,6 +13,8 @@ Attribute VB_Name = "SQLite3_Examples"
 '            Updated DLL_PATH to support System32 placement.
 '   0.1.2 - No functional changes. Version stamp updated.
 '   0.1.3 - No functional changes. Version stamp updated.
+'   0.1.4 - Added Example_Backup, Example_BlobStream, Example_Serialize,
+'            Example_Diagnostics. Added all four to TestAll().
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -286,12 +288,200 @@ Public Sub TestAll()
     Example_ConnectionPool
     Example_NamedParams
     Example_QuantDBTemplate
+    Example_Backup
+    Example_BlobStream
+    Example_Serialize
+    Example_Diagnostics
     Debug.Print String(60, "=")
     Debug.Print "All tests passed."
     Exit Sub
 ErrHandler:
     Debug.Print "ERROR: " & Err.Description
     Debug.Print "Source: " & Err.Source
+End Sub
+
+'==============================================================================
+' Example 8: Online Backup API
+' Hot-backup a live database to a file without interrupting readers/writers.
+'==============================================================================
+Public Sub Example_Backup()
+    ' Source: a fresh non-WAL file so the backup destination is a clean copy.
+    Dim srcPath  As String: srcPath  = Left(DB_PATH, Len(DB_PATH) - 3) & "_bak_src.db"
+    Dim destPath As String: destPath = Left(DB_PATH, Len(DB_PATH) - 3) & "_bak_dst.db"
+    On Error Resume Next: Kill srcPath: Kill destPath: Err.Clear: On Error GoTo 0
+
+    Dim src As New SQLite3Connection
+    src.OpenDatabase srcPath, DLL_PATH, 5000, False   ' no WAL for clean backup
+    src.ExecSQL "CREATE TABLE prices (sym TEXT, price REAL, ts TEXT);"
+    src.BeginTransaction
+    Dim i As Long
+    For i = 1 To 1000
+        src.ExecSQL "INSERT INTO prices VALUES ('AAPL', " & (150 + i * 0.01) & ", '" & Now() & "');"
+    Next i
+    src.CommitTransaction
+    Debug.Print "  Source rows: " & TableRowCount(src, "prices")
+
+    ' One-shot backup (blocks until complete; fine for end-of-day snapshots)
+    Dim bak As New SQLite3Backup
+    bak.BackupToFile src, destPath
+    Debug.Print "  BackupToFile: " & bak.TotalPages & " pages, complete=" & bak.IsComplete
+
+    ' Verify
+    Dim dest As New SQLite3Connection
+    dest.OpenDatabase destPath, DLL_PATH, 5000, False
+    Debug.Print "  Backup rows : " & TableRowCount(dest, "prices")
+    dest.CloseConnection
+
+    ' Incremental backup with progress (use for large DBs or progress bars)
+    Dim dest2Path As String: dest2Path = Left(DB_PATH, Len(DB_PATH) - 3) & "_bak_inc.db"
+    On Error Resume Next: Kill dest2Path: Err.Clear: On Error GoTo 0
+
+    Dim bak2 As New SQLite3Backup
+    bak2.OpenBackup src, dest2Path
+    Do
+        bak2.Step 10   ' 10 pages per step -- yield between steps for large DBs
+        Debug.Print "  Progress: " & Format(bak2.Progress * 100, "0.0") & "%"
+    Loop Until bak2.IsComplete
+    bak2.CloseBackup
+    Debug.Print "  Incremental backup complete."
+
+    src.CloseConnection
+    On Error Resume Next: Kill srcPath: Kill destPath: Kill dest2Path: Err.Clear
+    On Error GoTo 0
+End Sub
+
+'==============================================================================
+' Example 9: Incremental BLOB I/O (SQLite3BlobStream)
+' Read and write arbitrary byte ranges of a BLOB without loading it fully.
+'==============================================================================
+Public Sub Example_BlobStream()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    conn.ExecSQL "DROP TABLE IF EXISTS blobs;"
+    conn.ExecSQL "CREATE TABLE blobs (id INTEGER PRIMARY KEY, data BLOB);"
+
+    ' Insert a zeroblob placeholder (64 KB)
+    Dim blobSize As Long: blobSize = 65536
+    conn.ExecSQL "INSERT INTO blobs VALUES (1, zeroblob(" & blobSize & "));"
+    Dim rowId As LongLong: rowId = conn.LastInsertRowID()
+
+    ' Open the BLOB for writing
+    conn.BeginTransaction
+    Dim bs As New SQLite3BlobStream
+    bs.OpenBlob conn, "main", "blobs", "data", rowId, True  ' True = write mode
+
+    ' Write a pattern into three separate regions
+    Dim hdr(7) As Byte: Dim j As Long
+    For j = 0 To 7: hdr(j) = j: Next j          ' bytes 0-7: 0,1,2,...,7
+    bs.WriteAt hdr, 0
+
+    Dim middle(9) As Byte
+    For j = 0 To 9: middle(j) = 255 - j: Next j  ' bytes 1000-1009
+    bs.WriteAt middle, 1000
+    bs.CloseBlob
+    conn.CommitTransaction
+
+    ' Re-open for reading and verify
+    bs.OpenBlob conn, "main", "blobs", "data", rowId, False
+    Debug.Print "  BLOB size: " & bs.Size & " bytes"
+
+    Dim rHdr() As Byte: rHdr = bs.ReadAt(8, 0)
+    Debug.Print "  Header[0]: " & rHdr(0) & "  Header[7]: " & rHdr(7)
+
+    Dim rMid() As Byte: rMid = bs.ReadAt(10, 1000)
+    Debug.Print "  Middle[0]: " & rMid(0) & "  Middle[9]: " & rMid(9)
+    bs.CloseBlob
+
+    conn.ExecSQL "DROP TABLE IF EXISTS blobs;"
+    conn.CloseConnection
+End Sub
+
+'==============================================================================
+' Example 10: Serialize / Deserialize and InMemoryClone
+' Snapshot a live DB to a Byte array; restore to :memory: for fast in-process work.
+'==============================================================================
+Public Sub Example_Serialize()
+    ' Build a source DB (non-WAL so the snapshot has a clean page 1)
+    Dim srcPath As String: srcPath = Left(DB_PATH, Len(DB_PATH) - 3) & "_ser_src.db"
+    On Error Resume Next: Kill srcPath: Err.Clear: On Error GoTo 0
+
+    Dim src As New SQLite3Connection
+    src.OpenDatabase srcPath, DLL_PATH, 5000, False
+    src.ExecSQL "CREATE TABLE ticks (sym TEXT, price REAL, ts INTEGER);"
+    src.BeginTransaction
+    Dim i As Long
+    For i = 1 To 500
+        src.ExecSQL "INSERT INTO ticks VALUES ('MSFT', " & (300 + i * 0.05) & ", " & i & ");"
+    Next i
+    src.CommitTransaction
+    Debug.Print "  Source rows: " & TableRowCount(src, "ticks")
+
+    ' Snapshot to a Byte array (in-process; no file I/O)
+    Dim snap() As Byte
+    snap = SerializeDB(src)
+    Debug.Print "  Snapshot:    " & (UBound(snap) + 1) & " bytes"
+
+    ' Restore into :memory: for isolated analysis
+    Dim mem As New SQLite3Connection
+    mem.OpenDatabase ":memory:", DLL_PATH, 5000, False
+    DeserializeDB mem, snap
+    Debug.Print "  Deserialized rows: " & TableRowCount(mem, "ticks")
+    mem.ExecSQL "DELETE FROM ticks WHERE ts > 250;"
+    Debug.Print "  After delete in mem: " & TableRowCount(mem, "ticks") & "  (src unaffected)"
+    Debug.Print "  src still has: " & TableRowCount(src, "ticks")
+    mem.CloseConnection
+
+    ' InMemoryClone: independent :memory: copy via the backup API
+    Dim clone As SQLite3Connection
+    Set clone = InMemoryClone(src)
+    Debug.Print "  Clone rows:  " & TableRowCount(clone, "ticks")
+    clone.ExecSQL "DROP TABLE ticks;"
+    Debug.Print "  After DROP in clone -- src still has: " & TableRowCount(src, "ticks")
+    clone.CloseConnection
+
+    src.CloseConnection
+    On Error Resume Next: Kill srcPath: Err.Clear: On Error GoTo 0
+End Sub
+
+'==============================================================================
+' Example 11: Diagnostics (db_status / stmt_status)
+' Inspect memory usage and statement-level performance counters at runtime.
+'==============================================================================
+Public Sub Example_Diagnostics()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    conn.ExecSQL "DROP TABLE IF EXISTS diag_tbl;"
+    conn.ExecSQL "CREATE TABLE diag_tbl (id INTEGER PRIMARY KEY, val TEXT);"
+    conn.BeginTransaction
+    Dim i As Long
+    For i = 1 To 1000
+        conn.ExecSQL "INSERT INTO diag_tbl VALUES (" & i & ", 'v" & i & "');"
+    Next i
+    conn.CommitTransaction
+
+    ' Run a query to populate statement stats
+    Dim cmd As New SQLite3Command
+    cmd.Prepare conn, "SELECT SUM(id) FROM diag_tbl WHERE val LIKE 'v%';"
+    Dim total As Variant: total = cmd.ExecuteScalar()
+    Debug.Print "  Query result: " & total
+
+    ' Per-statement counters
+    Dim stmtInfo As Variant
+    stmtInfo = GetAllStmtStatus(cmd.StmtHandle)
+    Debug.Print "  VM steps:     " & stmtInfo(3, 1)   ' STMTSTAT_VM_STEP row
+    Debug.Print "  Full scans:   " & stmtInfo(0, 1)   ' STMTSTAT_FULLSCAN row
+
+    ' Per-connection memory counters (DbStatusSummary prints directly)
+    DbStatusSummary conn
+
+    ' Individual counters
+    Debug.Print "  Page cache bytes in use: " & GetDbStatusValue(conn, DBSTAT_CACHE_USED)
+    Debug.Print "  Schema memory:           " & GetDbStatusValue(conn, DBSTAT_SCHEMA_USED)
+
+    conn.ExecSQL "DROP TABLE IF EXISTS diag_tbl;"
+    conn.CloseConnection
 End Sub
 '==============================================================================
 ' Diagnose  -  run this first to find exactly where OpenDatabase fails.

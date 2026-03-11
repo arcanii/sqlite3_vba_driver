@@ -29,10 +29,11 @@ Attribute VB_Name = "SQLite3_JSON"
 '   $[0]        array index
 '   $.a.b[2]    chained path
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.3 - Initial release.
+'   0.1.4 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

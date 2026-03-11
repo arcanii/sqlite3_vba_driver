@@ -16,13 +16,14 @@ Attribute VB_Name = "SQLite3_Aggregates"
 ' pointer without a shim DLL.  All helpers below work entirely through
 ' standard SQL executed via the existing driver.
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.2 - Initial release. GroupByCount, GroupBySum, GroupByAvg,
 '            ScalarAgg, MultiAgg, AggregateQuery, RunningTotal,
 '            PercentileApprox, Histogram helpers.
 '   0.1.3 - No functional changes. Version stamp updated.
+'   0.1.4 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

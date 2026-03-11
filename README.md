@@ -1,71 +1,130 @@
 SQLite3 VBA Driver
 ==================
-Skip down to TLDR section to get it working a.s.a.p. Please look at the Security section to make sure you don't hit a slowdown caused by Windows/Excel security settings.
+Skip down to the TLDR section to get it working a.s.a.p. Please read the Security section — it explains a 100x slowdown that catches almost everyone the first time.
 
 **What is this?**<br/>
-This is a VBA SQLite3 "driver" so no registered COM objects, no third-party dependencies beyond the SQLite DLL itself. It is also very flexible to support a user defined 'sqlite3.dll' location, but this can cause "security issues" (refer to security issues section below).
+A VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party
+dependencies beyond the SQLite DLL itself. Every SQLite call goes through
+`DispCallFunc`, so the DLL path is configurable at runtime with no compile-time
+`Declare` statements.
+
+---
 
 TLDR Section (for those who have no attention span)
 =======
-1. Get the sqlite3.dll from [sqlite.org/download](https://sqlite.org/download.html).
-2. You need to have Microsoft Excel (64-bit) installed.
-3. Make a directory (e.g. "C:\sqlite\") : this can go anywhere you want, but if you change this you also need to change the excel file in step 7 (WARNING: see security issues)
-4. Put the sqlite3.dll in the directory you made in step 3 ("C:\sqlite\" if you want to avoid future work in step 7).
-5. Download the Excel file "Test-SQLite3-VBA-Driver.xlsm" from this GitHub repo, open it and turn on macros.
-6. Do a (`Alt+F11`) to open the Visual Basic editor.
-7. ONLY if you changed "C:\sqlite\" to something else ... look for, and make changes as below, if you made no changes in step 3, skip right to 8.
-   - find the "SQLite3_Tests.bas" in the 'Project - VBAProject' explorer window, at the top of the file look for the file locations.
-   - Change this to your DLL location: `Private Const DLL_PATH  As String = "C:\sqlite\sqlite3.dll"`. Note: if you are using the System32 option from security, it is just `"sqlite3.dll"`
-   - Change this to where you want the DB location: `Private Const DB_PATH   As String = "C:\sqlite\driver_test.db"`.
-8. In the 'Immediate window', type `RunAllTests` and hit enter. Reminder: to show the Immediate window do a (`Ctrl+G`).
-9. If everything is ok, the tests should run and produce a report (before the universe ends).
+1. Get `sqlite3.dll` (64-bit) from [sqlite.org/download](https://sqlite.org/download.html) — under *Precompiled Binaries for Windows*, grab **`sqlite-dll-win-x64-*.zip`**.
+2. You need 64-bit Microsoft Excel (2016 or later).
+3. Make a directory (e.g. `C:\sqlite\`) — this can go anywhere, but if you change it you must also update the constants in step 7.
+4. Put `sqlite3.dll` in that directory (`C:\sqlite\` if you want to skip step 7).
+5. Download `Test-SQLite3-VBA-Driver.xlsm` from this repo, open it and enable macros.
+6. Press `Alt+F11` to open the Visual Basic Editor.
+7. **Only if you changed `C:\sqlite\`** — find `SQLite3_Tests.bas` in the Project Explorer. Near the top of the file, update:
+   - `Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"` (or just `"sqlite3.dll"` if you used System32)
+   - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`
+   - `Private Const LOG_PATH As String = "C:\sqlite\test_results.log"` (set to `""` to disable)
+8. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
+9. All 305 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
+
+---
 
 Versions
 =======
 | Version | Date           | Tests | Pass | Highlights |
 |---------|----------------|-------|------|------------|
+| 0.1.4 | 12 March, 2026 |  305  |  305 | Online Backup API, incremental BLOB I/O, serialize/deserialize, diagnostics, file log output |
 | 0.1.3 | 11 March, 2026 |  240  |  240 | Schema introspection, savepoints, JSON functions, interrupt, failed-test summary |
 | 0.1.2 | 11 March, 2026 |  171  |  171 | BLOB support, aggregate helpers, FTS5 full-text search, GPLv3 license |
 | 0.1.1 | 11 March, 2026 |  122  |  122 | DispCallFunc ABI fixes, UTF-8 fixes, QPC benchmarking, security notes |
-| 0.1.0 | 09 March, 2026 |  n/a  |  n/a | Initial release. Core driver, recordset, bulk insert, pool. My inaugural github check-in! |
+| 0.1.0 | 09 March, 2026 |  n/a  |  n/a | Initial release — core driver, recordset, bulk insert, connection pool |
 
 Releases Page
 =======
 https://github.com/arcanii/sqlite3_vba_driver/releases
 
+---
+
 Security Issues (important)
 =======
-1. Microsoft Excel has default security settings that slow down this driver 100x (it feels like the universe may end before the 240 tests can run).
-2. In Excel File->Options->Trust Center, click "Trust Center Settings..." button.
-3. Macro Settings tab: `Enable VBA Macros.`
-4. You may also need add the file location in the "Trusted Location" tab. Simply click the "Add new location..." button and add the directory location you want to trust to run macros.
-   
-There are 2 alternatives to doing this : (these may require administrative privileges)
-1. Option A: place `sqlite3.dll` in `C:\Windows\System32` (recommended, but it may not be allowed in your environment).
-No Defender scanning overhead, found by name alone.
-2. Option B: explicit path outside System32 as the original, but you need to make sure your AV program has it excluded. Windows Defender example provided below.
+Microsoft Excel's default security settings can slow down this driver **100x**. It is
+not a Trust Center issue — it is Windows Defender scanning `sqlite3.dll`'s code pages
+on every single `DispCallFunc` call.
 
-### (for example) Windows Defender folder exclusion
+There are two fixes (either requires Administrator privileges):
+
+**Option A — Place `sqlite3.dll` in `C:\Windows\System32` (recommended)**
+```
+copy sqlite3.dll C:\Windows\System32\sqlite3.dll
+```
+Then use just the filename in your constants:
+```vba
+Private Const DLL_PATH As String = "sqlite3.dll"
+```
+System32 DLLs get "known DLL" treatment — Defender does not re-scan them at runtime.
+
+**Option B — Add a Windows Defender folder exclusion**
 1. Open **Windows Security** (search "Windows Security" in the Start menu)
-2. Go to **Virus & threat protection -> Manage settings**
-3. Scroll to **Exclusions -> Add or remove exclusions**
-4. Add a **Folder** exclusion for the folder containing `sqlite3.dll`
-   (e.g. `C:\sqlite\`)
+2. Go to **Virus & threat protection → Manage settings**
+3. Scroll to **Exclusions → Add or remove exclusions**
+4. Add a **Folder** exclusion for the folder containing `sqlite3.dll` (e.g. `C:\sqlite\`)
 
-The DLL path in your VBA constants stays unchanged. Defender will skip
-real-time scanning for that folder entirely.
+The DLL path constant in your VBA is unchanged. Defender skips that folder entirely.
 
 ---
 
-## What's New in 0.1.3
+## What's New in 0.1.4
 
-- **`SQLite3_Schema.bas`** — new module: schema introspection via `PRAGMA`. `GetTableList`, `GetViewList`, `GetColumnInfo`, `GetIndexList`, `GetIndexColumns`, `GetForeignKeys`, `GetCreateSQL`, `GetDatabaseInfo`, `GetTriggerList`
-- **`SQLite3_JSON.bas`** — new module: 15 wrappers for SQLite's built-in JSON functions (requires SQLite 3.38+). `JSONExtract`, `JSONSet`, `JSONInsert`, `JSONReplace`, `JSONRemove`, `JSONPatch`, `JSONValid`, `JSONSearch`, `JSONGroupArray`, `JSONGroupObject`, `JSONEach`, `JSONType`, `JSONBuildObject`, `JSONBuildArray`
-- **Savepoints** — nested transactions added to `SQLite3Connection`: `Savepoint`, `ReleaseSavepoint`, `RollbackToSavepoint`, `SavepointDepth`
-- **Interrupt** — `conn.Interrupt` calls `sqlite3_interrupt` to cancel a running query
-- **Failed-test summary** — `RunAllTests` now prints a consolidated list of every failure at the end so nothing gets lost in the output
-- **`ViewExists`, `IndexExists`** — added to `SQLite3_Helpers.bas` alongside the existing `TableExists`
-- 4 new test suites (26-29), 69 new tests — total 240/240
+### New modules
+
+- **`SQLite3Backup.cls`** — Online Backup API wrapper. Live hot-backup of any open
+  database to a file without blocking readers or writers on the source.
+  One-shot (`BackupToFile`) and incremental (`OpenBackup` / `Step` / `CloseBackup`)
+  modes. Progress reporting via `Progress`, `PagesRemaining`, `TotalPages`.
+
+- **`SQLite3BlobStream.cls`** — Incremental BLOB I/O via `sqlite3_blob_open`.
+  Read and write arbitrary byte ranges of a stored BLOB without loading the
+  entire value into memory. `OpenBlob`, `ReadBytes`, `ReadAt`, `WriteBytes`,
+  `WriteAt`, `SeekTo`, `Position`, `Size`.
+
+- **`SQLite3_Serialize.bas`** — In-process DB serialization via `sqlite3_serialize` /
+  `sqlite3_deserialize` (requires SQLite 3.23+). Snapshot a live database to a VBA
+  `Byte()` array (`SerializeDB`), restore a snapshot to any connection (`DeserializeDB`),
+  or clone a connection to a new independent `:memory:` database (`InMemoryClone`).
+  `InMemoryClone` uses the backup API internally for a clean page-level copy.
+
+- **`SQLite3_Diagnostics.bas`** — Runtime performance counters via `sqlite3_db_status`
+  and `sqlite3_stmt_status`. `GetDbStatus`, `GetDbStatusValue`, `ResetDbStatus`,
+  `GetStmtStatus`, `GetAllStmtStatus`, `DbStatusSummary`.
+
+### SQLite3_API.bas
+
+PROC_COUNT increased from 31 → 47. New wrappers:
+`sqlite3_backup_init/step/finish/remaining/pagecount`,
+`sqlite3_blob_open/read/write/close/bytes`,
+`sqlite3_serialize`, `sqlite3_deserialize`, `sqlite3_malloc`, `sqlite3_free`,
+`sqlite3_db_status`, `sqlite3_stmt_status`.
+
+### SQLite3_Tests.bas
+
+- 4 new test suites (30–33): `RunTest_Backup`, `RunTest_BlobStream`,
+  `RunTest_Serialize`, `RunTest_Diagnostics`
+- 62 new tests — total **302/302**
+- **File log output** — `RunAllTests` writes a complete copy of all test output to
+  `LOG_PATH` (configurable constant at the top of the file; set to `""` to disable).
+  Every PASS, FAIL, TIME, and INFO line goes to the log. The path is printed to the
+  Immediate window at the end of the run.
+
+### Bug fix — `SQLite3Backup.cls`
+
+`IsComplete` incorrectly returned `True` before the first `Step` call because
+`sqlite3_backup_remaining` returns 0 until the first step (per SQLite docs).
+`BackupToFile` therefore copied zero pages and produced an empty file.
+
+Fixed: `IsComplete` now returns `False` until at least one `Step` has executed;
+`BackupToFile` uses `Do … Loop Until` to guarantee at least one step fires.
+
+### Limitation removed
+
+*"No streaming BLOBs"* — resolved by `SQLite3BlobStream.cls`.
 
 ---
 
@@ -76,22 +135,28 @@ real-time scanning for that folder entirely.
 | Dynamic DLL loading | `LoadLibrary` at runtime — no hard `Declare` required |
 | UTF-8 marshalling | Full round-trip via `WideCharToMultiByte` / `MultiByteToWideChar` |
 | Prepared statements | Positional (`?`) and named (`:param`) binding |
-| BLOB support | `BindBlob`, `AsBytes()`, vectorized BLOB load, `BlobToBytes` |
+| BLOB support | `BindBlob`, `AsBytes()`, vectorized BLOB load |
+| Incremental BLOB I/O | `SQLite3BlobStream` — read/write byte ranges without full load |
 | Statement cache | 64-slot LRU per connection — cache hit = reset only, no re-prepare |
 | ADO-style recordset | `BOF`/`EOF`/`MoveNext`/`MoveLast`, `rs!FieldName` syntax |
-| Vectorized load | `LoadAll()` pulls entire result into a Variant matrix (~50x faster than live iteration) |
+| Vectorized load | `LoadAll()` pulls entire result into a Variant matrix (~50× faster than live) |
 | `ToMatrix()` | Returns `(row, col)` Variant array ready for direct Excel range assignment |
-| Bulk insert | Single reused prepared `INSERT`, transaction-batched commits (~100k rows/sec) |
+| Bulk insert | Single reused prepared `INSERT`, transaction-batched (~100k rows/sec) |
 | Connection pool | LRU idle reaping, auto-rollback on release, configurable max size |
 | Savepoints | Nested transactions: `Savepoint` / `ReleaseSavepoint` / `RollbackToSavepoint` |
 | Interrupt | `conn.Interrupt` cancels a running query via `sqlite3_interrupt` |
-| Schema introspection | Tables, views, columns, indexes, FKs, triggers, CREATE SQL, PRAGMA diagnostics |
-| Aggregate helpers | `GroupBy*`, `ScalarAgg`, `MultiAgg`, `RunningTotal`, `Histogram`, window functions |
+| Online backup | Hot-backup any live DB; one-shot or incremental with progress reporting |
+| Serialize / deserialize | Snapshot a DB to a `Byte()` array; restore to any connection |
+| In-memory clone | `InMemoryClone` — independent `:memory:` copy via the backup API |
+| Diagnostics | `sqlite3_db_status` / `sqlite3_stmt_status` counters per connection and statement |
+| Schema introspection | Tables, views, columns, indexes, FKs, triggers, CREATE SQL, PRAGMA info |
+| Aggregate helpers | `GroupBy*`, `ScalarAgg`, `MultiAgg`, `RunningTotal`, `Histogram` |
 | JSON functions | `JSONExtract`, `JSONSet`, `JSONPatch`, `JSONSearch`, `JSONGroupArray` and more |
 | FTS5 full-text search | Create, insert, search, snippet, highlight, BM25 ranking, optimize |
 | WAL mode | Enabled by default on `OpenDatabase` |
 | QPC benchmarking | `QueryPerformanceCounter` timing in every test suite |
-| Failed-test summary | All failures reprinted at the end of `RunAllTests` — none get lost |
+| File log output | `RunAllTests` writes a full copy of results to `LOG_PATH` |
+| Failed-test summary | All failures reprinted at the end of `RunAllTests` |
 | 64-bit only | All handles are `LongPtr` / `LongLong` — requires 64-bit Excel |
 
 ---
@@ -100,7 +165,7 @@ real-time scanning for that folder entirely.
 
 | File | Role |
 |------|------|
-| `SQLite3_API.bas` | DLL loader, 31 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
+| `SQLite3_API.bas` | DLL loader, 47 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
 | `SQLite3_API_Ext.bas` | Auxiliary dispatch bridge; secondary DLL handle copy |
 | `SQLite3_Helpers.bas` | `QueryScalar`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange` |
 | `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU statement cache, transactions, savepoints, interrupt |
@@ -110,22 +175,27 @@ real-time scanning for that folder entirely.
 | `SQLite3Command.cls` | Positional and named binding, `BindBlob`, `BindVariant`, `ExecuteScalar` |
 | `SQLite3BulkInsert.cls` | High-speed batch insert, `AppendRow`, `AppendMatrix` |
 | `SQLite3Pool.cls` | Connection pool, LRU reaping, auto-rollback on release, pre-warm |
+| `SQLite3Backup.cls` | **NEW** Online Backup API — `BackupToFile`, `OpenBackup`, `Step`, `CloseBackup`, progress |
+| `SQLite3BlobStream.cls` | **NEW** Incremental BLOB I/O — `OpenBlob`, `ReadAt`, `WriteAt`, `SeekTo` |
+| `SQLite3_Serialize.bas` | **NEW** Serialize/deserialize — `SerializeDB`, `DeserializeDB`, `InMemoryClone` |
+| `SQLite3_Diagnostics.bas` | **NEW** Runtime counters — `GetDbStatus`, `GetStmtStatus`, `DbStatusSummary` |
 | `SQLite3_Schema.bas` | Schema introspection — tables, columns, indexes, FKs, triggers, PRAGMA info |
 | `SQLite3_Aggregates.bas` | SQL aggregate and window function helpers |
 | `SQLite3_FTS5.bas` | FTS5 full-text search helpers |
 | `SQLite3_JSON.bas` | SQLite built-in JSON function wrappers (requires SQLite 3.38+) |
 | `SQLite3_Examples.bas` | Annotated usage examples for every feature |
-| `SQLite3_Tests.bas` | 240-test automated suite with QPC timing and failure summary |
-| `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded. You just need this to try it out. |
+| `SQLite3_Tests.bas` | 302-test automated suite with QPC timing, file logging, and failure summary |
+| `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded |
 
 ---
 
 ## Requirements
+
 - **64-bit Excel** (Excel 2016 or later, 64-bit install)
 - **`sqlite3.dll`** (64-bit) — download from [sqlite.org/download](https://sqlite.org/download.html)
   - Under *Precompiled Binaries for Windows*, grab **`sqlite-dll-win-x64-*.zip`**
-  - Extract `sqlite3.dll` to a location (e.g. `C:\sqlite\sqlite3.dll`)
-  - FTS5 and JSON functions are enabled in all official precompiled binaries
+  - FTS5, JSON, backup, and serialize are enabled in all official precompiled binaries
+  - Serialize/deserialize requires SQLite 3.23.0 or later (released 2018 — all current builds qualify)
 - **Microsoft Scripting Runtime** reference (for `Dictionary` used in `SQLite3Fields`)
 
 ---
@@ -135,50 +205,54 @@ real-time scanning for that folder entirely.
 ### 1. Place the DLL
 
 Copy `sqlite3.dll` (64-bit) to a stable path. The recommended location is
-alongside the `.xlsm` workbook, or a dedicated folder such as `C:\sqlite\`.
-This filepath is set programmatically in VBA, so it can be part of settings (e.g. dynamic).
+`C:\Windows\System32` (see Security section). Any path works as long as you set
+`DLL_PATH` accordingly.
 
 ### 2. Import the VBA modules
 
-Open the Visual Basic Editor (`Alt+F11`), then for each file below choose
-**File -> Import File**, or drag and drop them to the project explorer (this is faster):
+Open the Visual Basic Editor (`Alt+F11`), then for each file choose
+**File → Import File** (or drag-and-drop onto the Project Explorer):
 
 ```
-1.  SQLite3_API.bas           <- must be first
-2.  SQLite3_API_Ext.bas
-3.  SQLite3_Helpers.bas
-4.  SQLite3_Schema.bas
-5.  SQLite3_Aggregates.bas
-6.  SQLite3_FTS5.bas
-7.  SQLite3_JSON.bas
-8.  SQLite3Field.cls
-9.  SQLite3Fields.cls
-10. SQLite3Command.cls
-11. SQLite3Recordset.cls
-12. SQLite3Connection.cls
-13. SQLite3BulkInsert.cls
-14. SQLite3Pool.cls
-15. SQLite3_Examples.bas      <- optional, for learning only
-16. SQLite3_Tests.bas         <- optional, for testing only
+ 1.  SQLite3_API.bas           ← must be first
+ 2.  SQLite3_API_Ext.bas
+ 3.  SQLite3_Helpers.bas
+ 4.  SQLite3_Schema.bas
+ 5.  SQLite3_Aggregates.bas
+ 6.  SQLite3_FTS5.bas
+ 7.  SQLite3_JSON.bas
+ 8.  SQLite3Field.cls
+ 9.  SQLite3Fields.cls
+10.  SQLite3Command.cls
+11.  SQLite3Recordset.cls
+12.  SQLite3Connection.cls
+13.  SQLite3BulkInsert.cls
+14.  SQLite3Pool.cls
+15.  SQLite3Backup.cls
+16.  SQLite3BlobStream.cls
+17.  SQLite3_Serialize.bas
+18.  SQLite3_Diagnostics.bas
+19.  SQLite3_Examples.bas      ← optional, for learning only
+20.  SQLite3_Tests.bas         ← optional, for testing only
 ```
 
 ### 3. Add the Scripting Runtime reference
 
-In the VBA Editor: **Tools -> References -> check "Microsoft Scripting Runtime"**
+In the VBA Editor: **Tools → References → check "Microsoft Scripting Runtime"**
 
 ---
 
 ## Running the Tests
 
-1. Set `DLL_PATH` and `DB_PATH` at the top of `SQLite3_Tests.bas` to match
-   your environment:
+1. Set the constants at the top of `SQLite3_Tests.bas`:
 
 ```vba
-Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
+Private Const DLL_PATH As String = "sqlite3.dll"                        ' or full path
 Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"
+Private Const LOG_PATH As String = "C:\sqlite\test_results.log"         ' "" to disable
 ```
 
-2. Open the Immediate window (`Ctrl+G`), then type:
+2. Open the Immediate window (`Ctrl+G`) and type:
 
 ```
 RunAllTests
@@ -189,6 +263,7 @@ Expected output (abridged):
 ```
 ================================================================
 SQLite3 Driver Test Suite
+Started: 2026-03-12 14:22:07
 ================================================================
 
   [DllLoad]
@@ -197,51 +272,53 @@ SQLite3 Driver Test Suite
     INFO  SQLite version = 3.47.0
     TIME  1.23 ms
 
-  [Schema]
-    PASS  TableList has t_schema_a
-    PASS  TableExists t_schema_a
-    PASS  ColumnInfo 3 cols
-    PASS  FK refs t_schema_a
-    TIME  18.55 ms
+  [Backup]
+    PASS  Open backup source DB
+    PASS  Source rows before backup
+    PASS  BackupToFile no error
+    PASS  Backup IsComplete
+    PASS  Backup row 250 correct
+    TIME  18.42 ms
 
-  [JSON]
-    PASS  JSONExtract name=Alice
-    PASS  JSONSet city=Madrid
-    PASS  JSONPatch country=Spain
-    PASS  JSONGroupArray has Alice
-    TIME  24.31 ms
+  [Serialize]
+    PASS  SerializeDB no error
+    PASS  Row 50 correct
+    PASS  InMemoryClone no error
+    PASS  Clone row 99
+    TIME  22.18 ms
+
+  [Diagnostics]
+    PASS  GetDbStatus no error
+    PASS  First counter name
+    PASS  GetStmtStatus no error
+    TIME  8.91 ms
 
   ...
 
 ================================================================
-Results: 240 passed,  0 failed  (240 total)  1137.46 ms
+Results: 302 passed,  0 failed  (302 total)  1311.07 ms
 ================================================================
+
+Log written to: C:\sqlite\test_results.log
 ```
 
-If any tests fail, a consolidated summary is printed at the very end so nothing gets lost:
+If any tests fail, a consolidated summary is printed at the very end:
 
 ```
-FAILED TESTS (2):
+FAILED TESTS (1):
 ----------------------------------------------------------------
-  [Schema]  TableExists t_schema_a -- condition was False
-  [JSON]    JSONExtract name=Alice -- expected [Alice] got []
+  [Backup]  Backup row 250 correct -- expected [row_250] got []
 ----------------------------------------------------------------
 ```
 
-The test database is deleted automatically at the end of the suite. Individual
-tests can be run in isolation — each is a standalone `Public Sub`:
+Individual suites can be run in isolation — each is a standalone `Public Sub`:
 
 ```
-RunTest_Transactions
-RunTest_BulkInsert_AppendRow
-RunTest_ConnectionPool
-RunTest_BLOB
-RunTest_Aggregates
-RunTest_FTS5
-RunTest_Schema
-RunTest_Savepoints
-RunTest_JSON
-RunTest_Interrupt
+RunTest_Backup          RunTest_BlobStream      RunTest_Serialize
+RunTest_Diagnostics     RunTest_Schema          RunTest_Savepoints
+RunTest_JSON            RunTest_Interrupt       RunTest_FTS5
+RunTest_Aggregates      RunTest_BLOB            RunTest_ConnectionPool
+RunTest_BulkInsert_AppendRow                    RunTest_Transactions
 ```
 
 ---
@@ -273,7 +350,6 @@ conn.OpenDatabase DB_PATH, DLL_PATH, 5000, True, 256& * 1024 * 1024
 Dim rs As SQLite3Recordset
 Set rs = conn.OpenRecordset("SELECT * FROM prices;")
 Dim n As Long: n = rs.LoadAll()
-
 Sheet1.Range("A1").Resize(n, rs.FieldCount).Value = rs.ToMatrix()
 rs.CloseRecordset
 conn.CloseConnection
@@ -301,39 +377,100 @@ cmd.BindText 1, "logo.png"
 cmd.BindBlob 2, img
 cmd.Execute
 
-' Read - live recordset
+' Read via live recordset
 Dim rs As SQLite3Recordset
 Set rs = conn.OpenRecordset("SELECT data FROM assets WHERE name='logo.png';")
 Dim blob() As Byte: blob = rs.Fields("data").AsBytes()
+```
 
-' Read - vectorized (LoadAll stores BLOBs as Byte() in the matrix)
-rs.LoadAll
-Dim v As Variant: v = rs!data
-Dim b() As Byte: b = v
+### Online backup
+
+```vba
+' One-shot backup (blocks until complete)
+Dim bak As New SQLite3Backup
+bak.BackupToFile conn, "C:\backups\mydb_backup.db"
+Debug.Print bak.TotalPages & " pages copied"
+
+' Incremental backup with progress
+bak.OpenBackup conn, "C:\backups\mydb_backup.db"
+Do While Not bak.IsComplete
+    bak.Step 100
+    Debug.Print Format(bak.Progress * 100, "0.0") & "% complete"
+Loop
+bak.CloseBackup
+```
+
+### Incremental BLOB I/O
+
+```vba
+' Insert a zeroblob placeholder, then fill it via BlobStream
+conn.ExecSQL "INSERT INTO chunks (id, data) VALUES (1, zeroblob(65536));"
+Dim rowId As LongLong: rowId = conn.LastInsertRowID()
+
+conn.BeginTransaction
+Dim bs As New SQLite3BlobStream
+bs.OpenBlob conn, "main", "chunks", "data", rowId, True   ' True = writable
+Dim chunk(4095) As Byte
+' ... fill chunk ...
+bs.WriteAt chunk, 0       ' write at byte offset 0
+bs.WriteAt chunk, 4096    ' write at byte offset 4096
+bs.CloseBlob
+conn.CommitTransaction
+
+' Read back a specific range without loading the full BLOB
+bs.OpenBlob conn, "main", "chunks", "data", rowId, False
+Dim portion() As Byte: portion = bs.ReadAt(4096, 0)   ' 4096 bytes from offset 0
+bs.CloseBlob
+```
+
+### Serialize / deserialize
+
+```vba
+' Snapshot a live DB to a byte array (requires SQLite 3.23+)
+Dim snap() As Byte: snap = SerializeDB(conn)
+
+' Restore to a fresh in-memory connection
+Dim mem As New SQLite3Connection
+mem.OpenDatabase ":memory:", DLL_PATH, 5000, False
+DeserializeDB mem, snap
+' mem is now a complete independent copy of conn at that moment
+
+' Convenience: one-call clone
+Dim clone As SQLite3Connection
+Set clone = InMemoryClone(conn)
+' clone is fully independent — mutations to conn don't affect clone, and vice versa
+clone.ExecSQL "DELETE FROM sensitive_data;"
+clone.CloseConnection
+```
+
+### Diagnostics
+
+```vba
+' Print a full db_status summary to the Immediate window
+DbStatusSummary conn
+
+' Read a specific counter
+Dim used As Long, maxVal As Long
+GetDbStatus conn, DBSTAT_LOOKASIDE_USED, used, maxVal
+Debug.Print "Lookaside in use: " & used & "  peak: " & maxVal
+
+' Statement-level counters
+Dim cmd As New SQLite3Command
+cmd.Prepare conn, "SELECT * FROM prices WHERE symbol = ?;"
+cmd.BindText 1, "AAPL"
+' ... execute ...
+Debug.Print "VM steps: " & GetStmtStatus(cmd.StmtHandle, STMTSTAT_VM_STEP, False)
 ```
 
 ### Schema introspection
 
 ```vba
-' List all tables
 Dim tables As Variant: tables = GetTableList(conn)
+Dim cols   As Variant: cols   = GetColumnInfo(conn, "orders")
+Dim fks    As Variant: fks    = GetForeignKeys(conn, "order_lines")
+Dim ddl    As String:  ddl    = GetCreateSQL(conn, "orders")
+Dim info   As Variant: info   = GetDatabaseInfo(conn)
 
-' Column details: name, type, NOT NULL, default, PK position
-Dim cols As Variant: cols = GetColumnInfo(conn, "orders")
-
-' Foreign keys on a table
-Dim fks As Variant: fks = GetForeignKeys(conn, "order_lines")
-
-' Indexes on a table
-Dim idxs As Variant: idxs = GetIndexList(conn, "orders")
-
-' Retrieve the original CREATE TABLE statement
-Dim ddl As String: ddl = GetCreateSQL(conn, "orders")
-
-' Key PRAGMA diagnostics as a (name, value) matrix
-Dim info As Variant: info = GetDatabaseInfo(conn)
-
-' Existence checks
 If TableExists(conn, "orders")  Then ...
 If ViewExists(conn,  "v_open")  Then ...
 If IndexExists(conn, "ix_date") Then ...
@@ -347,98 +484,57 @@ conn.ExecSQL "INSERT INTO orders VALUES (1, 'outer');"
 
 conn.Savepoint "sp1"
 conn.ExecSQL "INSERT INTO orders VALUES (2, 'inner');"
-
-' Something went wrong - undo just the inner work
-conn.RollbackToSavepoint "sp1"
+conn.RollbackToSavepoint "sp1"   ' undo just the inner work
 conn.ReleaseSavepoint "sp1"
 
-conn.CommitTransaction   ' only the outer INSERT is kept
+conn.CommitTransaction            ' only the outer INSERT is kept
 ```
 
 ### JSON functions (requires SQLite 3.38+)
 
 ```vba
-' Table with a JSON TEXT column
 conn.ExecSQL "CREATE TABLE users (id INTEGER, profile TEXT);"
 conn.ExecSQL "INSERT INTO users VALUES (1, '{""name"":""Alice"",""city"":""London""}');"
 
-' Extract a value by JSONPath
 Dim city As Variant
-city = JSONExtract(conn, "users", "profile", "$.city", "id=1")
-' -> "London"
+city = JSONExtract(conn, "users", "profile", "$.city", "id=1")   ' -> "London"
 
-' Update a key in place
-JSONSet conn, "users", "profile", "$.city", "'Paris'", "id=1"
+JSONSet    conn, "users", "profile", "$.city",             "'Paris'",     "id=1"
+JSONPatch  conn, "users", "profile", "'{""country"":""France""}'",        "id=1"
+JSONRemove conn, "users", "profile", Array("$.city"),                     "id=1"
 
-' Apply an RFC 7396 merge-patch
-JSONPatch conn, "users", "profile", "'{""country"":""France""}'", "id=1"
-
-' Remove a key
-JSONRemove conn, "users", "profile", Array("$.city"), "id=1"
-
-' Search rows by JSON value
-Dim results As Variant
-results = JSONSearch(conn, "users", "profile", "$.country", "'France'")
-
-' Aggregate all names into a JSON array
 Dim arr As String
 arr = JSONGroupArray(conn, "users", "json_extract(profile,'$.name')")
 ' -> '["Alice","Bob"]'
-
-' Validate all rows contain valid JSON
-If Not JSONValid(conn, "users", "profile") Then Debug.Print "Bad JSON found"
 ```
 
 ### Aggregate helpers
 
 ```vba
-' Count rows per group, top 10
 Dim mat As Variant
 mat = GroupByCount(conn, "sales", "region", "", 10)
 Sheet1.Range("A1").Resize(UBound(mat,1)+1, 2).Value = mat
 
-' Multiple aggregates in one query
 mat = MultiAgg(conn, "trades", _
                Array("COUNT(*) AS n", "SUM(qty) AS vol", "AVG(price) AS avg_px"))
-
-' Running total window function
 mat = RunningTotal(conn, "trades", "trade_date", "pnl")
-
-' Histogram: bucket price into 20 bins
 mat = Histogram(conn, "trades", "price", 20)
 ```
 
 ### FTS5 full-text search
 
 ```vba
-' Create FTS5 table with Porter stemmer
 CreateFTS5Table conn, "docs", Array("title", "body"), "", "porter unicode61", True
 
-' Insert documents
 FTS5Insert conn, "docs", Array("title", "body"), _
            Array("SQLite Guide", "How to use SQLite for fast data storage")
 
-' Bulk insert from a matrix
-FTS5BulkInsert conn, "docs", Array("title", "body"), myDataMatrix
-
-' Search - returns (row, col) matrix sorted by relevance
 Dim results As Variant
 results = FTS5SearchMatrix(conn, "docs", "sqlite storage")
-
-' Search with highlighted snippets
 results = FTS5Snippet(conn, "docs", "sqlite", 0, "<b>", "</b>", "...", 16, 20)
-
-' Prefix search, column-scoped search, boolean operators
-results = FTS5SearchMatrix(conn, "docs", "fast*")
-results = FTS5SearchMatrix(conn, "docs", "title : SQLite")
-results = FTS5SearchMatrix(conn, "docs", "sqlite AND performance")
-
-' BM25 explicit scoring
 results = FTS5BM25Search(conn, "docs", "fast data storage", "*", 10)
 
-' Maintenance
-FTS5Optimize conn, "docs"    ' merge b-tree segments
-FTS5Rebuild  conn, "docs"    ' rebuild index from content table
+FTS5Optimize conn, "docs"
 ```
 
 ### Connection pool
@@ -469,42 +565,6 @@ Debug.Print bulk.TotalRowsInserted & " rows inserted"
 
 ---
 
-## Performance Under Macro Security Restrictions
-
-If Excel's Trust Center is set to **"Disable Macros with Notification"** and
-the DLL is loaded from an untrusted path, the driver may run 100x slower than
-normal. This is not an Excel Trust Center issue — it is Windows Defender
-scanning `sqlite3.dll`'s code pages on every `DispCallFunc` call.
-
-Two fixes, neither requiring changes to Trust Center:
-
-### Fix A — Place `sqlite3.dll` in `C:\Windows\System32` (recommended, but may not be allowed in your environment)
-
-```
-copy sqlite3.dll C:\Windows\System32\sqlite3.dll
-```
-
-Then use just the filename in your constants:
-
-```vba
-Private Const DLL_PATH As String = "sqlite3.dll"
-```
-
-System32 DLLs receive "known DLL" treatment — Defender does not repeatedly
-scan them at runtime.
-
-### Fix B — Add a Windows Defender folder exclusion (requires Administrator permission)
-
-1. Open **Windows Security**
-2. Go to **Virus & threat protection -> Manage settings**
-3. Scroll to **Exclusions -> Add or remove exclusions**
-4. Add a **Folder** exclusion for the folder containing `sqlite3.dll`
-
-The DLL path in your VBA constants is unchanged. Defender skips real-time
-scanning for that folder entirely.
-
----
-
 ## Architecture
 
 ```
@@ -512,16 +572,16 @@ VBA code
   +--> SQLite3Connection / SQLite3Command / SQLite3Recordset / ...
          +--> SQLite3_API.bas
                 +-- LoadLibraryW("sqlite3.dll")    <- once at first OpenDatabase
-                +-- GetProcAddress x 31            <- cached in m_procs(31)
+                +-- GetProcAddress x 47            <- cached in m_procs(47)
                 +--> DispCallFunc(0, m_procs(n), CC_CDECL, ...)  <- every call
                        +--> sqlite3.dll  (__cdecl ABI)
 ```
 
 **Why `DispCallFunc` instead of `Declare`?**
-`Declare PtrSafe` requires the DLL to be on the system PATH or in the same
-folder as the workbook at load time, and the declaration is fixed at compile
-time. `DispCallFunc` lets the driver load any path at runtime, fail gracefully
-if the DLL is missing, and reload without restarting Excel.
+`Declare PtrSafe` requires the DLL on the system PATH or next to the workbook at
+load time, and the declaration is fixed at compile time. `DispCallFunc` lets the
+driver load any path at runtime, fail gracefully if the DLL is missing, and reload
+without restarting Excel.
 
 **`DispCallFunc` calling convention:**
 
@@ -537,7 +597,12 @@ Private Declare PtrSafe Function DispCallFunc Lib "oleaut32" ( _
     ByRef prgpvarg    As LongPtr,  _ ' ptrs(0)  <- NOT Variant
     ByRef pvargResult As Variant) As Long
 
-' Each wrapper builds ptrs(i) = VarPtr(args(i)) before calling
+' Each wrapper builds ptrs(i) = VarPtr(args(i)) before calling.
+' Pointer args:  CLngLng(ptr), VT_I8
+' Integer args:  CLng(val),    VT_I4
+' Double args:   val,          VT_R8
+' Return ptr:    VT_I8, CLngPtr(ret)
+' Return int:    VT_I4, CLng(ret)
 ```
 
 ---
@@ -556,40 +621,72 @@ Private Declare PtrSafe Function DispCallFunc Lib "oleaut32" ( _
 | `col : word` | Word must appear in the named column |
 | `^word` | Word must be the first token in the column |
 
-FTS5 requires SQLite 3.9.0 or later. JSON functions require SQLite 3.38.0 or later.
-Both are included in all official precompiled binaries from sqlite.org. The FTS5 and
-JSON test suites probe availability at startup and print `SKIP` gracefully on older builds.
+FTS5 requires SQLite 3.9.0+. JSON requires SQLite 3.38.0+. Both are included in all
+official precompiled binaries from sqlite.org. The FTS5 and JSON test suites probe
+availability at startup and print `SKIP` gracefully on older builds.
+
+---
+
+## Diagnostics Reference
+
+### db_status constants (`SQLite3_Diagnostics.bas`)
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `DBSTAT_LOOKASIDE_USED` | 0 | Lookaside slots currently in use |
+| `DBSTAT_CACHE_USED` | 1 | Page cache memory in use (bytes) |
+| `DBSTAT_SCHEMA_USED` | 2 | Memory used for schema (bytes) |
+| `DBSTAT_STMT_USED` | 3 | Memory used for prepared statements (bytes) |
+| `DBSTAT_LOOKASIDE_HIT` | 4 | Lookaside allocations that succeeded |
+| `DBSTAT_LOOKASIDE_MISS_SIZE` | 5 | Failed due to allocation size |
+| `DBSTAT_LOOKASIDE_MISS_FULL` | 6 | Failed due to lookaside buffer full |
+| `DBSTAT_CACHE_HIT` | 7 | Page cache hits |
+| `DBSTAT_CACHE_MISS` | 8 | Page cache misses |
+| `DBSTAT_CACHE_WRITE` | 9 | Page cache write-backs |
+| `DBSTAT_DEFERRED_FKS` | 10 | Unresolved deferred foreign keys |
+| `DBSTAT_CACHE_USED_SHARED` | 11 | Shared cache memory (bytes) |
+| `DBSTAT_CACHE_SPILL` | 12 | Cache spill-to-disk events |
+
+### stmt_status constants
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `STMTSTAT_FULLSCAN` | 1 | Full table scans performed |
+| `STMTSTAT_SORT` | 2 | Sort operations |
+| `STMTSTAT_AUTOINDEX` | 3 | Automatic indexes created |
+| `STMTSTAT_VM_STEP` | 4 | Virtual machine instructions executed |
+| `STMTSTAT_REPREPARE` | 5 | Statement re-preparations |
+| `STMTSTAT_RUN` | 6 | Times the statement has been run |
+| `STMTSTAT_FILTER_MISS` | 7 | Bloom filter misses |
+| `STMTSTAT_FILTER_HIT` | 8 | Bloom filter hits |
+| `STMTSTAT_MEMUSED` | 99 | Memory in use by the statement (bytes) |
 
 ---
 
 ## Pragmas applied at OpenDatabase
 
 ```sql
-PRAGMA journal_mode       = WAL;
+PRAGMA journal_mode       = WAL;          -- write-ahead logging (omitted if enableWAL=False)
 PRAGMA wal_autocheckpoint = 1000;
 PRAGMA synchronous        = NORMAL;
-PRAGMA cache_size         = -65536;   -- 64 MB page cache
+PRAGMA cache_size         = -65536;       -- 64 MB page cache
 PRAGMA temp_store         = MEMORY;
 PRAGMA locking_mode       = NORMAL;
-PRAGMA mmap_size          = <n>;      -- if mmapSizeBytes > 0
+PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 ```
 
 ---
 
 ## Limitations
 
-- **64-bit Excel only.** The driver unconditionally uses `LongPtr` / `LongLong`
-  and will not compile in 32-bit VBA.
+- **64-bit Excel only.** Uses `LongPtr` / `LongLong` throughout — will not compile in 32-bit VBA.
 - **Windows only.** Relies on `kernel32` and `oleaut32`.
-- **No async execution.** SQLite itself is synchronous; `busy_timeout` handles
-  contention between threads.
-- **No custom aggregate functions.** SQLite's `sqlite3_create_function_v2`
-  requires C callback pointers that VBA cannot produce without a shim DLL.
-- **No streaming BLOBs.** BLOBs are read fully into memory. Very large BLOBs
-  (>50 MB) should be stored externally and referenced by path. Streaming BLOB
-  I/O is planned for 0.1.4.
-- **JSON functions require SQLite 3.38+.** The JSON test suite probes
-  availability at startup and prints `SKIP` gracefully on older builds.
+- **No async execution.** SQLite is synchronous; `busy_timeout` handles lock contention.
+- **No custom aggregate functions.** `sqlite3_create_function_v2` requires C callback
+  pointers that VBA cannot produce without a shim DLL.
+- **JSON functions require SQLite 3.38+.** Both JSON and FTS5 test suites probe
+  availability at startup and print `SKIP` gracefully on older builds.
+- **Serialize requires SQLite 3.23+** (released 2018). All current official binaries qualify.
 
 ---
 

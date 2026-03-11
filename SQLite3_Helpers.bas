@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_Helpers"
 ' No Declare needed here: CopyMemoryByte lives in SQLite3_API.bas,
 ' and all SQLite wrappers are in SQLite3_API.bas.
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. QueryScalar, TableExists, TableRowCount,
@@ -12,6 +12,7 @@ Attribute VB_Name = "SQLite3_Helpers"
 '   0.1.1 - No functional changes.
 '   0.1.2 - No functional changes. Version stamp updated.
 '   0.1.3 - No functional changes. Version stamp updated.
+'   0.1.4 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

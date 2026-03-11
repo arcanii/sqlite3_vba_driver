@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_API"
 ' Architecture : LoadLibrary / GetProcAddress / DispCallFunc
 ' Key point    : prgpvarg must be ByRef LongPtr (array of ptrs to Variants)
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. LoadLibrary/DispCallFunc loader, 28 proc cache,
@@ -18,6 +18,11 @@ Attribute VB_Name = "SQLite3_API"
 '            PROC_COUNT bumped from 28 to 30.
 '   0.1.3 - Added sqlite3_interrupt wrapper.
 '            P_INTERRUPT = 30; PROC_COUNT bumped to 31.
+'   0.1.4 - Added Online Backup API (backup_init/step/finish/remaining/pagecount).
+'            Added incremental BLOB I/O (blob_open/read/write/close/bytes).
+'            Added serialize/deserialize + sqlite3_malloc/free.
+'            Added sqlite3_db_status, sqlite3_stmt_status.
+'            PROC_COUNT bumped from 31 to 47.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -97,7 +102,7 @@ Public Const SQLITE_TRANSIENT As LongLong = -1
 Private Const CP_UTF8 As Long = 65001
 
 Private m_hDll      As LongPtr
-Private m_procs(31) As LongPtr
+Private m_procs(46) As LongPtr
 
 Private Const P_OPEN_V2        As Long = 0
 Private Const P_CLOSE          As Long = 1
@@ -130,7 +135,24 @@ Private Const P_LIBVERSION     As Long = 27
 Private Const P_BIND_BLOB      As Long = 28
 Private Const P_COLUMN_BLOB    As Long = 29
 Private Const P_INTERRUPT      As Long = 30
-Private Const PROC_COUNT       As Long = 31
+' v0.1.4 additions
+Private Const P_BACKUP_INIT    As Long = 31
+Private Const P_BACKUP_STEP    As Long = 32
+Private Const P_BACKUP_FINISH  As Long = 33
+Private Const P_BACKUP_REMAIN  As Long = 34
+Private Const P_BACKUP_PGCOUNT As Long = 35
+Private Const P_BLOB_OPEN      As Long = 36
+Private Const P_BLOB_READ      As Long = 37
+Private Const P_BLOB_WRITE     As Long = 38
+Private Const P_BLOB_CLOSE     As Long = 39
+Private Const P_BLOB_BYTES     As Long = 40
+Private Const P_SERIALIZE      As Long = 41
+Private Const P_DESERIALIZE    As Long = 42
+Private Const P_MALLOC         As Long = 43
+Private Const P_FREE           As Long = 44
+Private Const P_DB_STATUS      As Long = 45
+Private Const P_STMT_STATUS    As Long = 46
+Private Const PROC_COUNT       As Long = 47
 
 '==============================================================================
 ' Library lifecycle
@@ -155,7 +177,7 @@ Public Sub SQLite_Unload()
     FreeLibrary m_hDll
     m_hDll = 0
     Dim i As Long
-    For i = 0 To 31: m_procs(i) = 0: Next i
+    For i = 0 To 46: m_procs(i) = 0: Next i
 End Sub
 
 Public Function SQLite_IsLoaded() As Boolean
@@ -507,6 +529,206 @@ Public Sub sqlite3_interrupt(ByVal pDb As LongPtr)
 End Sub
 
 '==============================================================================
+' Online Backup API  (v0.1.4)
+' sqlite3_backup_init returns an opaque handle; Step/Finish/Remaining/Pagecount
+' take that handle. All string args are pre-converted to UTF-8 byte arrays by
+' the caller (SQLite3Backup.cls) -- the wrappers receive raw pointers.
+'==============================================================================
+Public Function sqlite3_backup_init(ByVal pDest As LongPtr, _
+                                     ByVal pDestName As LongPtr, _
+                                     ByVal pSrc As LongPtr, _
+                                     ByVal pSrcName As LongPtr) As LongPtr
+    Dim args(3) As Variant, vt(3) As Integer, ptrs(3) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDest):     vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pDestName): vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(pSrc):      vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = CLngLng(pSrcName):  vt(3) = VT_I8: ptrs(3) = VarPtr(args(3))
+    DispCallFunc CLngPtr(0), m_procs(P_BACKUP_INIT), CC_CDECL, VT_I8, 4, vt(0), ptrs(0), ret
+    sqlite3_backup_init = CLngPtr(ret)
+End Function
+
+Public Function sqlite3_backup_step(ByVal pBackup As LongPtr, _
+                                     ByVal nPage As Long) As Long
+    Dim args(1) As Variant, vt(1) As Integer, ptrs(1) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBackup): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLng(nPage):      vt(1) = VT_I4: ptrs(1) = VarPtr(args(1))
+    DispCallFunc CLngPtr(0), m_procs(P_BACKUP_STEP), CC_CDECL, VT_I4, 2, vt(0), ptrs(0), ret
+    sqlite3_backup_step = CLng(ret)
+End Function
+
+Public Function sqlite3_backup_finish(ByVal pBackup As LongPtr) As Long
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBackup): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_BACKUP_FINISH), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+    sqlite3_backup_finish = CLng(ret)
+End Function
+
+Public Function sqlite3_backup_remaining(ByVal pBackup As LongPtr) As Long
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBackup): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_BACKUP_REMAIN), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+    sqlite3_backup_remaining = CLng(ret)
+End Function
+
+Public Function sqlite3_backup_pagecount(ByVal pBackup As LongPtr) As Long
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBackup): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_BACKUP_PGCOUNT), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+    sqlite3_backup_pagecount = CLng(ret)
+End Function
+
+'==============================================================================
+' Incremental BLOB I/O  (v0.1.4)
+' sqlite3_blob_open opens a handle to a single BLOB cell by rowid.
+' ppBlob is an OUT parameter; pass VarPtr(pBlob) where pBlob is a LongPtr.
+'==============================================================================
+Public Function sqlite3_blob_open(ByVal pDb As LongPtr, _
+                                   ByVal pZDb As LongPtr, _
+                                   ByVal pZTable As LongPtr, _
+                                   ByVal pZColumn As LongPtr, _
+                                   ByVal iRow As LongLong, _
+                                   ByVal flags As Long, _
+                                   ByVal ppBlob As LongPtr) As Long
+    Dim args(6) As Variant, vt(6) As Integer, ptrs(6) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb):     vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pZDb):    vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(pZTable): vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = CLngLng(pZColumn):vt(3) = VT_I8: ptrs(3) = VarPtr(args(3))
+    args(4) = iRow:             vt(4) = VT_I8: ptrs(4) = VarPtr(args(4))
+    args(5) = CLng(flags):      vt(5) = VT_I4: ptrs(5) = VarPtr(args(5))
+    args(6) = CLngLng(ppBlob):  vt(6) = VT_I8: ptrs(6) = VarPtr(args(6))
+    DispCallFunc CLngPtr(0), m_procs(P_BLOB_OPEN), CC_CDECL, VT_I4, 7, vt(0), ptrs(0), ret
+    sqlite3_blob_open = CLng(ret)
+End Function
+
+Public Function sqlite3_blob_read(ByVal pBlob As LongPtr, _
+                                   ByVal pBuf As LongPtr, _
+                                   ByVal nBytes As Long, _
+                                   ByVal iOffset As Long) As Long
+    Dim args(3) As Variant, vt(3) As Integer, ptrs(3) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBlob):  vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pBuf):   vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLng(nBytes):    vt(2) = VT_I4: ptrs(2) = VarPtr(args(2))
+    args(3) = CLng(iOffset):   vt(3) = VT_I4: ptrs(3) = VarPtr(args(3))
+    DispCallFunc CLngPtr(0), m_procs(P_BLOB_READ), CC_CDECL, VT_I4, 4, vt(0), ptrs(0), ret
+    sqlite3_blob_read = CLng(ret)
+End Function
+
+Public Function sqlite3_blob_write(ByVal pBlob As LongPtr, _
+                                    ByVal pBuf As LongPtr, _
+                                    ByVal nBytes As Long, _
+                                    ByVal iOffset As Long) As Long
+    Dim args(3) As Variant, vt(3) As Integer, ptrs(3) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBlob):  vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pBuf):   vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLng(nBytes):    vt(2) = VT_I4: ptrs(2) = VarPtr(args(2))
+    args(3) = CLng(iOffset):   vt(3) = VT_I4: ptrs(3) = VarPtr(args(3))
+    DispCallFunc CLngPtr(0), m_procs(P_BLOB_WRITE), CC_CDECL, VT_I4, 4, vt(0), ptrs(0), ret
+    sqlite3_blob_write = CLng(ret)
+End Function
+
+Public Function sqlite3_blob_close(ByVal pBlob As LongPtr) As Long
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBlob): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_BLOB_CLOSE), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+    sqlite3_blob_close = CLng(ret)
+End Function
+
+Public Function sqlite3_blob_bytes(ByVal pBlob As LongPtr) As Long
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pBlob): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_BLOB_BYTES), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+    sqlite3_blob_bytes = CLng(ret)
+End Function
+
+'==============================================================================
+' Serialize / Deserialize  (v0.1.4, requires SQLite 3.23+)
+' sqlite3_serialize: snapshot a DB to a raw byte buffer (returned as LongPtr).
+'   piSize is an OUT parameter -- pass VarPtr(szDb) where szDb is LongLong.
+'   Caller must free the returned pointer with sqlite3_free.
+' sqlite3_deserialize: replace a DB's content from a raw byte buffer.
+'   pData must be allocated with sqlite3_malloc (use FREEONCLOSE so SQLite owns it).
+'==============================================================================
+Public Function sqlite3_serialize(ByVal pDb As LongPtr, _
+                                   ByVal pSchema As LongPtr, _
+                                   ByVal piSize As LongPtr, _
+                                   ByVal mFlags As Long) As LongPtr
+    Dim args(3) As Variant, vt(3) As Integer, ptrs(3) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb):     vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pSchema): vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(piSize):  vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = CLng(mFlags):     vt(3) = VT_I4: ptrs(3) = VarPtr(args(3))
+    DispCallFunc CLngPtr(0), m_procs(P_SERIALIZE), CC_CDECL, VT_I8, 4, vt(0), ptrs(0), ret
+    sqlite3_serialize = CLngPtr(ret)
+End Function
+
+Public Function sqlite3_deserialize(ByVal pDb As LongPtr, _
+                                     ByVal pSchema As LongPtr, _
+                                     ByVal pData As LongPtr, _
+                                     ByVal szDb As LongLong, _
+                                     ByVal szBuf As LongLong, _
+                                     ByVal mFlags As Long) As Long
+    Dim args(5) As Variant, vt(5) As Integer, ptrs(5) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb):     vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pSchema): vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(pData):   vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = szDb:             vt(3) = VT_I8: ptrs(3) = VarPtr(args(3))
+    args(4) = szBuf:            vt(4) = VT_I8: ptrs(4) = VarPtr(args(4))
+    args(5) = CLng(mFlags):     vt(5) = VT_I4: ptrs(5) = VarPtr(args(5))
+    DispCallFunc CLngPtr(0), m_procs(P_DESERIALIZE), CC_CDECL, VT_I4, 6, vt(0), ptrs(0), ret
+    sqlite3_deserialize = CLng(ret)
+End Function
+
+' Allocate nBytes from SQLite's internal heap. Required for buffers passed to
+' sqlite3_deserialize with SQLITE_DESERIALIZE_FREEONCLOSE.
+Public Function sqlite3_malloc(ByVal nBytes As Long) As LongPtr
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLng(nBytes): vt(0) = VT_I4: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_MALLOC), CC_CDECL, VT_I8, 1, vt(0), ptrs(0), ret
+    sqlite3_malloc = CLngPtr(ret)
+End Function
+
+' Free a pointer previously returned by sqlite3_malloc or sqlite3_serialize.
+Public Sub sqlite3_free(ByVal pMem As LongPtr)
+    If pMem = 0 Then Exit Sub
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pMem): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_FREE), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+End Sub
+
+'==============================================================================
+' Status counters  (v0.1.4)
+' sqlite3_db_status: per-connection counters (cache hits, pages used, etc.)
+'   pCur and pHiwtr are OUT int* -- pass VarPtr(cur) and VarPtr(hi).
+' sqlite3_stmt_status: per-statement counters (full-scans, sorts, VM steps).
+'==============================================================================
+Public Function sqlite3_db_status(ByVal pDb As LongPtr, _
+                                   ByVal op As Long, _
+                                   ByVal pCur As LongPtr, _
+                                   ByVal pHiwtr As LongPtr, _
+                                   ByVal resetFlg As Long) As Long
+    Dim args(4) As Variant, vt(4) As Integer, ptrs(4) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb):    vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLng(op):        vt(1) = VT_I4: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(pCur):   vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = CLngLng(pHiwtr): vt(3) = VT_I8: ptrs(3) = VarPtr(args(3))
+    args(4) = CLng(resetFlg):  vt(4) = VT_I4: ptrs(4) = VarPtr(args(4))
+    DispCallFunc CLngPtr(0), m_procs(P_DB_STATUS), CC_CDECL, VT_I4, 5, vt(0), ptrs(0), ret
+    sqlite3_db_status = CLng(ret)
+End Function
+
+Public Function sqlite3_stmt_status(ByVal pStmt As LongPtr, _
+                                     ByVal op As Long, _
+                                     ByVal resetFlg As Long) As Long
+    Dim args(2) As Variant, vt(2) As Integer, ptrs(2) As LongPtr, ret As Variant
+    args(0) = CLngLng(pStmt): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLng(op):       vt(1) = VT_I4: ptrs(1) = VarPtr(args(1))
+    args(2) = CLng(resetFlg): vt(2) = VT_I4: ptrs(2) = VarPtr(args(2))
+    DispCallFunc CLngPtr(0), m_procs(P_STMT_STATUS), CC_CDECL, VT_I4, 3, vt(0), ptrs(0), ret
+    sqlite3_stmt_status = CLng(ret)
+End Function
+
+'==============================================================================
 ' Private helpers
 '==============================================================================
 Private Function ProcName(ByVal idx As Long) As String
@@ -542,6 +764,22 @@ Private Function ProcName(ByVal idx As Long) As String
         Case P_BIND_BLOB:      ProcName = "sqlite3_bind_blob"
         Case P_COLUMN_BLOB:    ProcName = "sqlite3_column_blob"
         Case P_INTERRUPT:      ProcName = "sqlite3_interrupt"
+        Case P_BACKUP_INIT:    ProcName = "sqlite3_backup_init"
+        Case P_BACKUP_STEP:    ProcName = "sqlite3_backup_step"
+        Case P_BACKUP_FINISH:  ProcName = "sqlite3_backup_finish"
+        Case P_BACKUP_REMAIN:  ProcName = "sqlite3_backup_remaining"
+        Case P_BACKUP_PGCOUNT: ProcName = "sqlite3_backup_pagecount"
+        Case P_BLOB_OPEN:      ProcName = "sqlite3_blob_open"
+        Case P_BLOB_READ:      ProcName = "sqlite3_blob_read"
+        Case P_BLOB_WRITE:     ProcName = "sqlite3_blob_write"
+        Case P_BLOB_CLOSE:     ProcName = "sqlite3_blob_close"
+        Case P_BLOB_BYTES:     ProcName = "sqlite3_blob_bytes"
+        Case P_SERIALIZE:      ProcName = "sqlite3_serialize"
+        Case P_DESERIALIZE:    ProcName = "sqlite3_deserialize"
+        Case P_MALLOC:         ProcName = "sqlite3_malloc"
+        Case P_FREE:           ProcName = "sqlite3_free"
+        Case P_DB_STATUS:      ProcName = "sqlite3_db_status"
+        Case P_STMT_STATUS:    ProcName = "sqlite3_stmt_status"
         Case Else:             ProcName = ""
     End Select
 End Function

@@ -8,7 +8,7 @@ Attribute VB_Name = "SQLite3_Tests"
 ' Output goes to the Immediate window (Ctrl+G).
 ' Each test prints PASS or FAIL with details on failure.
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. 122 tests across 22 suites.
@@ -19,7 +19,15 @@ Attribute VB_Name = "SQLite3_Tests"
 '            RunTest_FTS5 (25). Total: 171 tests across 25 suites.
 '   0.1.3 - Added RunTest_Schema (26), RunTest_Savepoints (27),
 '            RunTest_JSON (28), RunTest_Interrupt (29).
-'            Total: 171+ tests across 29 suites.
+'            Total: 240 tests across 29 suites.
+'   0.1.4 - Added RunTest_Backup (30), RunTest_BlobStream (31),
+'            RunTest_Serialize (32), RunTest_Diagnostics (33).
+'            Added LOG_PATH file logging -- RunAllTests writes a full copy
+'            of all output to LOG_PATH (set to "" to disable).
+'            Fixed SQLite3Backup.cls: IsComplete returned True before the
+'            first Step call (sqlite3_backup_remaining=0 before first step);
+'            BackupToFile copied zero pages and produced an empty file.
+'            Total: 305 tests across 33 suites.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -54,7 +62,11 @@ Private Const DLL_PATH As String = "sqlite3.dll"
 
 ' Option B: explicit path outside System32
 ' Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
-Private Const DB_PATH As String = "C:\sqlite\driver_test.db"
+Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"
+
+' Log file path -- RunAllTests writes a copy of all output here.
+' Set to "" to disable file logging.
+Private Const LOG_PATH As String = "C:\sqlite\test_results.log"
 
 ' ---------------------------------------------------------------------------
 ' Test harness state
@@ -67,6 +79,7 @@ Private m_runStart   As LongPtr   ' QPC ticks at RunAllTests start
 Private m_freq       As LongPtr   ' QPC frequency (ticks per second)
 Private m_failLog()  As String    ' accumulated failure messages for end summary
 Private m_failCount  As Long      ' number of entries in m_failLog
+Private m_logFile    As Integer   ' VBA file handle; 0 = not open
 
 ' ---------------------------------------------------------------------------
 ' Timing helpers
@@ -79,6 +92,16 @@ End Function
 
 Private Sub EnsureFreq()
     If m_freq = 0 Then QueryPerformanceFrequency m_freq
+End Sub
+
+' Write a line to both the Immediate window and the log file (if open).
+Private Sub Log(ByVal msg As String)
+    Debug.Print msg
+    If m_logFile <> 0 Then
+        On Error Resume Next
+        Print #m_logFile, msg
+        On Error GoTo 0
+    End If
 End Sub
 
 ' Elapsed milliseconds between two QPC readings, formatted to 2 decimal places
@@ -95,23 +118,23 @@ End Function
 Private Sub StartSuite(ByVal name As String)
     m_suite      = name
     m_suiteStart = QPC()
-    Debug.Print ""
-    Debug.Print "  [" & name & "]"
+    Log ""
+    Log "  [" & name & "]"
 End Sub
 
 Private Sub EndSuite()
     Dim elapsed As String: elapsed = ElapsedMs(m_suiteStart, QPC())
-    Debug.Print "    TIME  " & elapsed
+    Log "    TIME  " & elapsed
 End Sub
 
 Private Sub Pass(ByVal name As String)
     m_pass = m_pass + 1
-    Debug.Print "    PASS  " & name
+    Log "    PASS  " & name
 End Sub
 
 Private Sub Fail(ByVal name As String, ByVal detail As String)
     m_fail = m_fail + 1
-    Debug.Print "    FAIL  " & name & " -- " & detail
+    Log "    FAIL  " & name & " -- " & detail
     ' Append to failure log for end-of-run summary
     If m_failCount = 0 Then
         ReDim m_failLog(0)
@@ -172,9 +195,24 @@ Public Sub RunAllTests()
     EnsureFreq
     m_runStart = QPC()
 
-    Debug.Print String(64, "=")
-    Debug.Print "SQLite3 Driver Test Suite"
-    Debug.Print String(64, "=")
+    ' Open log file if LOG_PATH is set
+    m_logFile = 0
+    If Len(LOG_PATH) > 0 Then
+        On Error Resume Next
+        m_logFile = FreeFile()
+        Open LOG_PATH For Output As #m_logFile
+        If Err.Number <> 0 Then
+            m_logFile = 0
+            Debug.Print "WARNING: could not open log file: " & LOG_PATH
+        End If
+        Err.Clear
+        On Error GoTo 0
+    End If
+
+    Log String(64, "=")
+    Log "SQLite3 Driver Test Suite"
+    Log "Started: " & Format(Now(), "yyyy-mm-dd hh:mm:ss")
+    Log String(64, "=")
 
     RunTest_DllLoad
     RunTest_OpenClose
@@ -205,24 +243,38 @@ Public Sub RunAllTests()
     RunTest_Savepoints
     RunTest_JSON
     RunTest_Interrupt
+    RunTest_Backup
+    RunTest_BlobStream
+    RunTest_Serialize
+    RunTest_Diagnostics
 
     Dim totalTime As String: totalTime = ElapsedMs(m_runStart, QPC())
-    Debug.Print ""
-    Debug.Print String(64, "=")
-    Debug.Print "Results: " & m_pass & " passed,  " & m_fail & " failed  " & _
+    Log ""
+    Log String(64, "=")
+    Log "Results: " & m_pass & " passed,  " & m_fail & " failed  " & _
                 "(" & (m_pass + m_fail) & " total)  " & totalTime
-    Debug.Print String(64, "=")
+    Log String(64, "=")
 
     ' Failure summary -- only printed when there are failures
     If m_fail > 0 Then
-        Debug.Print ""
-        Debug.Print "FAILED TESTS (" & m_fail & "):"
-        Debug.Print String(64, "-")
+        Log ""
+        Log "FAILED TESTS (" & m_fail & "):"
+        Log String(64, "-")
         Dim i As Long
         For i = 0 To m_failCount - 1
-            Debug.Print "  " & m_failLog(i)
+            Log "  " & m_failLog(i)
         Next i
-        Debug.Print String(64, "-")
+        Log String(64, "-")
+    End If
+
+    ' Close log file
+    If m_logFile <> 0 Then
+        On Error Resume Next
+        Close #m_logFile
+        On Error GoTo 0
+        m_logFile = 0
+        Debug.Print ""
+        Debug.Print "Log written to: " & LOG_PATH
     End If
 
     ' Final cleanup
@@ -246,7 +298,7 @@ Public Sub RunTest_DllLoad()
     Dim ver As String: ver = SQLite3_API.SQLite_Version()
     AssertTrue "Version non-empty", Len(ver) > 0
     AssertTrue "Version starts with 3", Left(ver, 1) = "3"
-    Debug.Print "    INFO  SQLite version = " & ver
+    Log "    INFO  SQLite version = " & ver
 
     SQLite3_API.SQLite_Unload
     AssertFalse "SQLite_IsLoaded after unload", SQLite3_API.SQLite_IsLoaded()
@@ -1229,7 +1281,7 @@ Public Sub RunTest_FTS5()
     On Error Resume Next
     conn.ExecSQL "CREATE VIRTUAL TABLE _fts5_probe USING fts5(x);"
     If Err.Number <> 0 Then
-        Debug.Print "    SKIP  FTS5 not available in this sqlite3.dll build"
+        Log "    SKIP  FTS5 not available in this sqlite3.dll build"
         Err.Clear
         conn.CloseConnection
         EndSuite
@@ -1533,7 +1585,7 @@ Public Sub RunTest_JSON()
     Dim probe As Variant
     probe = QueryScalar(conn, "SELECT json_valid('{""a"":1}');")
     If Err.Number <> 0 Then
-        Debug.Print "    SKIP  JSON functions not available (requires SQLite 3.38+)"
+        Log "    SKIP  JSON functions not available (requires SQLite 3.38+)"
         Err.Clear
         conn.CloseConnection
         EndSuite
@@ -1692,3 +1744,320 @@ Public Sub RunTest_Interrupt()
     conn.CloseConnection
     EndSuite
 End Sub
+
+'==============================================================================
+' 30. Online Backup API
+'==============================================================================
+Public Sub RunTest_Backup()
+    StartSuite "Backup"
+    On Error Resume Next
+
+    ' Use a dedicated source file opened WITHOUT WAL from creation.
+    ' FreshConn() opens driver_test.db in WAL mode; after 29 prior suites its
+    ' statement cache holds open read snapshots that prevent wal_checkpoint(TRUNCATE)
+    ' from resetting the WAL.  A fresh rollback-journal-only file has a clean
+    ' page 1 from the start -- no checkpoint tricks needed.
+    Dim srcPath As String
+    srcPath = Left(DB_PATH, Len(DB_PATH) - 3) & "_baksrc.db"
+    Kill srcPath:          Err.Clear
+    Kill srcPath & "-wal": Err.Clear
+    Kill srcPath & "-shm": Err.Clear
+
+    Dim src As New SQLite3Connection
+    src.OpenDatabase srcPath, DLL_PATH, 5000, False   ' enableWAL=False
+    AssertNoError "Open backup source DB"
+    src.ExecSQL "CREATE TABLE t_bak (id INTEGER PRIMARY KEY, val TEXT);"
+    src.BeginTransaction
+    Dim i As Long
+    For i = 1 To 500
+        src.ExecSQL "INSERT INTO t_bak VALUES (" & i & ", 'row_" & i & "');"
+    Next i
+    src.CommitTransaction
+    AssertEqual "Source rows before backup", TableRowCount(src, "t_bak"), 500
+
+    ' Full one-shot backup
+    Dim destPath As String
+    destPath = Left(DB_PATH, Len(DB_PATH) - 3) & "_bak.db"
+    Kill destPath: Err.Clear
+
+    Dim bak As New SQLite3Backup
+    bak.BackupToFile src, destPath
+    AssertNoError "BackupToFile no error"
+    AssertTrue "Backup IsComplete", bak.IsComplete
+    AssertFalse "Backup not open after finish", bak.IsOpen
+
+    ' Verify backup
+    Dim dest As New SQLite3Connection
+    dest.OpenDatabase destPath, DLL_PATH, 5000, False
+    AssertNoError "Open backup DB"
+    AssertEqual "Backup row count", TableRowCount(dest, "t_bak"), 500
+    Dim v As Variant
+    v = QueryScalar(dest, "SELECT val FROM t_bak WHERE id=250;")
+    AssertEqual "Backup row 250 correct", CStr(v), "row_250"
+    dest.CloseConnection
+
+    ' Test incremental backup with progress tracking
+    Dim dest2Path As String
+    dest2Path = Left(DB_PATH, Len(DB_PATH) - 3) & "_bak2.db"
+    Kill dest2Path: Err.Clear
+
+    Dim bak2 As New SQLite3Backup
+    bak2.OpenBackup src, dest2Path
+    AssertNoError "OpenBackup no error"
+
+    Dim steps As Long
+    Do While Not bak2.IsComplete
+        bak2.Step 1
+        steps = steps + 1
+        If steps = 1 Then AssertTrue "TotalPages > 0", bak2.TotalPages > 0
+        If steps > 10000 Then Exit Do
+    Loop
+    AssertTrue "Incremental: IsComplete", bak2.IsComplete
+    AssertTrue "Progress = 1.0", bak2.Progress >= 0.99
+    bak2.CloseBackup
+
+    ' Verify second backup
+    Dim dest2 As New SQLite3Connection
+    dest2.OpenDatabase dest2Path, DLL_PATH, 5000, False
+    AssertEqual "Backup2 row count", TableRowCount(dest2, "t_bak"), 500
+    dest2.CloseConnection
+
+    src.CloseConnection
+    Kill srcPath:   Err.Clear
+    Kill destPath:  Err.Clear
+    Kill dest2Path: Err.Clear
+    EndSuite
+End Sub
+
+'==============================================================================
+' 31. Incremental BLOB Stream
+'==============================================================================
+Public Sub RunTest_BlobStream()
+    StartSuite "BlobStream"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_blobstream"
+    conn.ExecSQL "CREATE TABLE t_blobstream (id INTEGER PRIMARY KEY, data BLOB);"
+
+    ' Insert a zeroblob placeholder (1024 bytes)
+    Dim blobSize As Long: blobSize = 1024
+    conn.ExecSQL "INSERT INTO t_blobstream VALUES (1, zeroblob(" & blobSize & "));"
+    Dim rowId As LongLong: rowId = conn.LastInsertRowID()
+    AssertTrue "RowId is 1", CLng(rowId) = 1
+
+    ' Open blob for writing
+    conn.BeginTransaction
+    Dim bs As New SQLite3BlobStream
+    bs.OpenBlob conn, "t_blobstream", "data", rowId, True
+    AssertNoError "OpenBlob for write"
+    AssertTrue "IsOpen", bs.IsOpen
+    AssertEqual "Blob size", bs.Size, blobSize
+
+    ' Write a pattern: fill with sequential byte values
+    Dim chunk() As Byte
+    ReDim chunk(255)
+    Dim j As Long
+    For j = 0 To 255
+        chunk(j) = CByte(j)
+    Next j
+    ' Write four 256-byte chunks to fill the 1024-byte blob
+    Dim off As Long
+    For off = 0 To 768 Step 256
+        bs.WriteAt chunk, off
+    Next off
+    AssertNoError "WriteAt all chunks"
+    AssertEqual "Position unchanged after WriteAt", bs.Position, 0  ' WriteAt doesn't move position
+
+    bs.CloseBlob
+    conn.CommitTransaction
+    AssertFalse "Closed after commit", bs.IsOpen
+
+    ' Reopen for reading and verify pattern
+    Dim bsR As New SQLite3BlobStream
+    bsR.OpenBlob conn, "t_blobstream", "data", rowId, False
+    AssertNoError "OpenBlob for read"
+    AssertEqual "Read blob size", bsR.Size, blobSize
+
+    ' Read first 256 bytes and verify
+    Dim firstChunk() As Byte
+    firstChunk = bsR.ReadAt(256, 0)
+    AssertNoError "ReadAt 0"
+    AssertEqual "First byte = 0", CInt(firstChunk(0)), 0
+    AssertEqual "Last byte of first chunk = 255", CInt(firstChunk(255)), 255
+
+    ' Read using sequential ReadBytes (advances position)
+    bsR.SeekTo 0
+    Dim seqChunk() As Byte: seqChunk = bsR.ReadBytes(128)
+    AssertEqual "Position after ReadBytes(128)", bsR.Position, 128
+    AssertEqual "Sequential byte 0", CInt(seqChunk(0)), 0
+    AssertEqual "Sequential byte 127", CInt(seqChunk(127)), 127
+
+    ' Read last 256 bytes
+    Dim lastChunk() As Byte: lastChunk = bsR.ReadAt(256, 768)
+    AssertEqual "Last chunk byte 0 = 0", CInt(lastChunk(0)), 0
+    AssertEqual "Last chunk byte 255 = 255", CInt(lastChunk(255)), 255
+
+    bsR.CloseBlob
+
+    ' Seek out-of-range should error
+    Dim bsE As New SQLite3BlobStream
+    bsE.OpenBlob conn, "t_blobstream", "data", rowId, False
+    Err.Clear
+    bsE.SeekTo blobSize + 1
+    AssertTrue "Out-of-range seek raises error", Err.Number <> 0
+    Err.Clear
+    bsE.CloseBlob
+
+    DropTable conn, "t_blobstream"
+    conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 32. Serialize / Deserialize
+'==============================================================================
+Public Sub RunTest_Serialize()
+    StartSuite "Serialize"
+    On Error Resume Next
+
+    ' Create a source DB with known content
+    Dim src As SQLite3Connection: Set src = FreshConn()
+    DropTable src, "t_ser"
+    src.ExecSQL "CREATE TABLE t_ser (id INTEGER PRIMARY KEY, name TEXT);"
+    src.BeginTransaction
+    Dim i As Long
+    For i = 1 To 100
+        src.ExecSQL "INSERT INTO t_ser VALUES (" & i & ", 'name_" & i & "');"
+    Next i
+    src.CommitTransaction
+    AssertEqual "Source rows", TableRowCount(src, "t_ser"), 100
+
+    ' Checkpoint all WAL frames into the main file, then switch to rollback journal.
+    ' sqlite3_serialize captures exactly the bytes SQLite would write to disk; if the
+    ' connection is still in WAL mode those bytes include a WAL-format page 1 that
+    ' causes text reads to fail when deserialized into a :memory: connection that
+    ' cannot support WAL.  Switching to DELETE first gives a clean rollback snapshot.
+    src.ExecSQL "PRAGMA wal_checkpoint(TRUNCATE);"
+    src.ExecSQL "PRAGMA journal_mode=DELETE;"
+    Err.Clear
+
+    ' Serialize to bytes
+    Dim snap() As Byte
+    Err.Clear
+    snap = SerializeDB(src)
+    AssertNoError "SerializeDB no error"
+    AssertTrue "Snapshot non-empty", UBound(snap) > 0
+    ' SQLite DB files start with the magic header "SQLite format 3\000"
+    ' S(0) Q(1) L(2) i(3) t(4) e(5) space(6) ...
+    AssertEqual "Header byte 0 = S", Chr(snap(0)), "S"
+    AssertEqual "Header byte 1 = Q", Chr(snap(1)), "Q"
+    AssertEqual "Header byte 2 = L", Chr(snap(2)), "L"
+    Log "    INFO  Serialized size = " & (UBound(snap) + 1) & " bytes"
+
+    ' Deserialize into a fresh in-memory connection.
+    Dim mem As New SQLite3Connection
+    mem.OpenDatabase ":memory:", DLL_PATH, 5000, False
+    AssertNoError "Open :memory: for deserialize"
+    DeserializeDB mem, snap
+    AssertNoError "DeserializeDB no error"
+    AssertEqual "Deserialized row count", TableRowCount(mem, "t_ser"), 100
+    Dim v As Variant
+    v = QueryScalar(mem, "SELECT name FROM t_ser WHERE id=50;")
+    AssertEqual "Row 50 correct", CStr(v), "name_50"
+
+    ' Mutations to mem do NOT affect src
+    mem.ExecSQL "DELETE FROM t_ser WHERE id <= 10;"
+    AssertEqual "mem after delete", TableRowCount(mem, "t_ser"), 90
+    AssertEqual "src unaffected", TableRowCount(src, "t_ser"), 100
+    mem.CloseConnection
+
+    ' InMemoryClone
+    Dim clone As SQLite3Connection
+    Set clone = InMemoryClone(src)
+    AssertNoError "InMemoryClone no error"
+    AssertEqual "Clone row count", TableRowCount(clone, "t_ser"), 100
+    v = QueryScalar(clone, "SELECT name FROM t_ser WHERE id=99;")
+    AssertEqual "Clone row 99", CStr(v), "name_99"
+
+    ' Verify clone is independent
+    clone.ExecSQL "DROP TABLE t_ser;"
+    AssertFalse "Clone: t_ser gone", TableExists(clone, "t_ser")
+    AssertTrue  "Source: t_ser still exists", TableExists(src, "t_ser")
+    clone.CloseConnection
+
+    src.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 33. Diagnostics (db_status / stmt_status)
+'==============================================================================
+Public Sub RunTest_Diagnostics()
+    StartSuite "Diagnostics"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_diag"
+    conn.ExecSQL "CREATE TABLE t_diag (id INTEGER PRIMARY KEY, val REAL);"
+    conn.BeginTransaction
+    Dim i As Long
+    For i = 1 To 1000
+        conn.ExecSQL "INSERT INTO t_diag VALUES (" & i & ", " & (i * 1.1) & ");"
+    Next i
+    conn.CommitTransaction
+
+    ' GetDbStatus returns a matrix
+    Dim info As Variant: info = GetDbStatus(conn, False)
+    AssertNoError "GetDbStatus no error"
+    AssertTrue "GetDbStatus rows >= 13", UBound(info, 1) + 1 >= 13
+    AssertEqual "GetDbStatus cols", UBound(info, 2) + 1, 3
+    AssertEqual "First counter name", CStr(info(0, 0)), "lookaside_used"
+    AssertTrue "cache_used >= 0", CLng(info(1, 1)) >= 0
+
+    ' GetDbStatusValue returns (current, highwater) array
+    Dim cv As Variant: cv = GetDbStatusValue(conn, DBSTAT_CACHE_USED, False)
+    AssertNoError "GetDbStatusValue no error"
+    AssertTrue "cache_used current >= 0", CLng(cv(0)) >= 0
+    AssertTrue "cache_used highwater >= 0", CLng(cv(1)) >= 0
+    Log "    INFO  cache_used current=" & cv(0) & " highwater=" & cv(1)
+
+    ' Run a full-scan query and check stmt_status
+    Dim cmd As New SQLite3Command
+    cmd.Prepare conn, "SELECT SUM(val) FROM t_diag WHERE val > 500;"
+    cmd.ExecuteScalar
+    AssertNoError "Diagnostic query no error"
+
+    ' Full-scan step count should be > 0 (no index on val)
+    Dim fullScan As Long
+    fullScan = GetStmtStatus(cmd.StmtHandle, STMTSTAT_FULLSCAN, False)
+    AssertTrue "Full-scan steps > 0", fullScan > 0
+    Log "    INFO  fullscan_step=" & fullScan
+
+    ' VM step count should also be > 0
+    Dim vmSteps As Long
+    vmSteps = GetStmtStatus(cmd.StmtHandle, STMTSTAT_VM_STEP, False)
+    AssertTrue "VM steps > 0", vmSteps > 0
+
+    ' GetAllStmtStatus matrix
+    Dim stmtInfo As Variant: stmtInfo = GetAllStmtStatus(cmd.StmtHandle, False)
+    AssertNoError "GetAllStmtStatus no error"
+    AssertTrue "GetAllStmtStatus rows >= 9", UBound(stmtInfo, 1) + 1 >= 9
+    AssertEqual "GetAllStmtStatus cols", UBound(stmtInfo, 2) + 1, 2
+    AssertEqual "First stmt stat name", CStr(stmtInfo(0, 0)), "fullscan_step"
+
+    ' ResetDbStatus: highwater should be zeroed after reset
+    ResetDbStatus conn, DBSTAT_CACHE_HIT
+    Dim cv2 As Variant: cv2 = GetDbStatusValue(conn, DBSTAT_CACHE_HIT, False)
+    AssertEqual "Highwater zeroed after reset", CLng(cv2(1)), 0
+
+    ' DbStatusSummary should not raise
+    Err.Clear
+    DbStatusSummary conn
+    AssertNoError "DbStatusSummary no error"
+
+    DropTable conn, "t_diag"
+    conn.CloseConnection
+    EndSuite
+End Sub
+

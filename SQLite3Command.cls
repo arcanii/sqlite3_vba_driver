@@ -23,7 +23,7 @@ Attribute VB_Exposed = False
 '   cmd.BindTextByName ":name", "Alice"
 '   cmd.BindIntByName  ":id",   7
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. Prepare, positional and named binding,
@@ -33,6 +33,7 @@ Attribute VB_Exposed = False
 '   0.1.2 - Added BindBlob, BindBlobByName, IsByteArrayInit.
 '            BindVariant handles vbByte+vbArray (type 8209) -> BLOB.
 '   0.1.3 - No functional changes. Version stamp updated.
+'   0.1.4 - Added StmtHandle property for use with SQLite3_Diagnostics.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -79,6 +80,11 @@ Public Sub Prepare(ByVal conn As SQLite3Connection, ByVal sql As String)
     m_pStmt      = conn.GetCachedStatement(sql)
     m_isPrepared = True
 End Sub
+
+' Raw sqlite3_stmt* handle -- pass to GetStmtStatus / GetAllStmtStatus.
+Public Property Get StmtHandle() As LongPtr
+    StmtHandle = m_pStmt
+End Property
 
 Public Sub FinalizeStatement()
     If m_isPrepared And m_pStmt <> 0 Then

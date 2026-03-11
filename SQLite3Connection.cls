@@ -12,7 +12,7 @@ Attribute VB_Exposed = False
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
 '
-' Version : 0.1.3
+' Version : 0.1.4
 '
 ' Version History:
 '   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
@@ -23,6 +23,7 @@ Attribute VB_Exposed = False
 '   0.1.2 - No functional changes. Version stamp updated.
 '   0.1.3 - Added Savepoint, ReleaseSavepoint, RollbackToSavepoint,
 '            SavepointDepth, Interrupt. Added m_savepointDepth state.
+'   0.1.4 - Added DllPath property (needed by SQLite3_Serialize.InMemoryClone).
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -313,6 +314,10 @@ End Function
 
 Public Function DbPath() As String
     DbPath = m_dbPath
+End Function
+
+Public Function DllPath() As String
+    DllPath = m_dllPath
 End Function
 
 '==============================================================================
