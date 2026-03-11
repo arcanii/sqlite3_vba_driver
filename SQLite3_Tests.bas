@@ -24,25 +24,69 @@ Attribute VB_Name = "SQLite3_Tests"
 '    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
 '
 '
-'==============================================================================
+'==============================================================================Option Explicit
 
-Option Explicit
+' ---------------------------------------------------------------------------
+' High-resolution timer (kernel32)
+' ---------------------------------------------------------------------------
+Public Declare PtrSafe Function QueryPerformanceCounter Lib "kernel32" _
+    (lpPerformanceCount As LongPtr) As Long
+Public Declare PtrSafe Function QueryPerformanceFrequency Lib "kernel32" _
+    (lpFrequency As LongPtr) As Long
 
 ' Change these to match your environment
-Private Const DLL_PATH  As String = "C:\sqlite\sqlite3.dll"
-Private Const DB_PATH   As String = "C:\sqlite\driver_test.db"
+' Option A: place sqlite3.dll in C:\Windows\System32 (recommended)
+'   - No Defender scanning overhead, found by name alone
+'Private Const DLL_PATH As String = "sqlite3.dll"
+
+' Option B: explicit path outside System32
+Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
+Private Const DB_PATH As String = "C:\sqlite\driver_test.db"
 
 ' ---------------------------------------------------------------------------
 ' Test harness state
 ' ---------------------------------------------------------------------------
-Private m_pass  As Long
-Private m_fail  As Long
-Private m_suite As String
+Private m_pass       As Long
+Private m_fail       As Long
+Private m_suite      As String
+Private m_suiteStart As LongPtr   ' QPC ticks at suite start
+Private m_runStart   As LongPtr   ' QPC ticks at RunAllTests start
+Private m_freq       As LongPtr   ' QPC frequency (ticks per second)
 
+' ---------------------------------------------------------------------------
+' Timing helpers
+' ---------------------------------------------------------------------------
+Private Function QPC() As LongPtr
+    Dim t As LongPtr
+    QueryPerformanceCounter t
+    QPC = t
+End Function
+
+Private Sub EnsureFreq()
+    If m_freq = 0 Then QueryPerformanceFrequency m_freq
+End Sub
+
+' Elapsed milliseconds between two QPC readings, formatted to 2 decimal places
+Private Function ElapsedMs(ByVal t0 As LongPtr, ByVal t1 As LongPtr) As String
+    EnsureFreq
+    Dim ms As Double
+    ms = (CDbl(t1) - CDbl(t0)) / CDbl(m_freq) * 1000#
+    ElapsedMs = Format(ms, "0.00") & " ms"
+End Function
+
+' ---------------------------------------------------------------------------
+' Suite helpers
+' ---------------------------------------------------------------------------
 Private Sub StartSuite(ByVal name As String)
     m_suite = name
+    m_suiteStart = QPC()
     Debug.Print ""
     Debug.Print "  [" & name & "]"
+End Sub
+
+Private Sub EndSuite()
+    Dim elapsed As String: elapsed = ElapsedMs(m_suiteStart, QPC())
+    Debug.Print "    TIME  " & elapsed
 End Sub
 
 Private Sub Pass(ByVal name As String)
@@ -101,6 +145,8 @@ End Sub
 Public Sub RunAllTests()
     m_pass = 0
     m_fail = 0
+    EnsureFreq
+    m_runStart = QPC()
 
     Debug.Print String(64, "=")
     Debug.Print "SQLite3 Driver Test Suite"
@@ -129,10 +175,11 @@ Public Sub RunAllTests()
     RunTest_Boundaries
     RunTest_ErrorHandling
 
+    Dim totalTime As String: totalTime = ElapsedMs(m_runStart, QPC())
     Debug.Print ""
     Debug.Print String(64, "=")
     Debug.Print "Results: " & m_pass & " passed,  " & m_fail & " failed  " & _
-                "(" & (m_pass + m_fail) & " total)"
+                "(" & (m_pass + m_fail) & " total)  " & totalTime
     Debug.Print String(64, "=")
 
     ' Final cleanup
@@ -163,6 +210,7 @@ Public Sub RunTest_DllLoad()
 
     ' Reload for remaining tests
     SQLite3_API.SQLite_Load DLL_PATH
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -185,6 +233,7 @@ Public Sub RunTest_OpenClose()
     Err.Clear
     conn.CloseConnection
     AssertNoError "Double CloseConnection safe"
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -213,6 +262,7 @@ Public Sub RunTest_ExecSQL()
 
     DropTable conn, "t_exec"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -239,6 +289,7 @@ Public Sub RunTest_ScalarTypes()
     rs.CloseRecordset
     DropTable conn, "t_types"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -271,6 +322,7 @@ Public Sub RunTest_NullHandling()
     rs.CloseRecordset
     DropTable conn, "t_null"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -311,6 +363,7 @@ Public Sub RunTest_UTF8()
     rs.CloseRecordset
     DropTable conn, "t_utf8"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -361,6 +414,7 @@ Public Sub RunTest_PreparedStatements()
 
     DropTable conn, "t_prep"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -387,6 +441,7 @@ Public Sub RunTest_NamedParams()
 
     DropTable conn, "t_named"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -413,6 +468,7 @@ Public Sub RunTest_Transactions()
 
     DropTable conn, "t_tx"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -437,6 +493,7 @@ Public Sub RunTest_RollbackTransaction()
 
     DropTable conn, "t_rb"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -479,6 +536,7 @@ Public Sub RunTest_Recordset_Live()
     rs2.CloseRecordset
     DropTable conn, "t_live"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -535,6 +593,7 @@ Public Sub RunTest_Recordset_Vectorized()
     rs.CloseRecordset
     DropTable conn, "t_vec"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -572,6 +631,7 @@ Public Sub RunTest_Recordset_GetRows()
     rs.CloseRecordset
     DropTable conn, "t_gr"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -606,6 +666,7 @@ Public Sub RunTest_Recordset_ToMatrix()
     rs.CloseRecordset
     DropTable conn, "t_mat"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -641,6 +702,7 @@ Public Sub RunTest_BulkInsert_AppendRow()
 
     DropTable conn, "t_bulk"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -677,6 +739,7 @@ Public Sub RunTest_BulkInsert_AppendMatrix()
 
     DropTable conn, "t_mat2"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -710,6 +773,7 @@ Public Sub RunTest_StatementCache()
 
     DropTable conn, "t_cache"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -764,6 +828,7 @@ Public Sub RunTest_ConnectionPool()
     Dim cleanup As SQLite3Connection: Set cleanup = FreshConn()
     DropTable cleanup, "t_pool"
     cleanup.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -807,6 +872,7 @@ Public Sub RunTest_LargeDataset()
     rs.CloseRecordset
     DropTable conn, "t_large"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -849,6 +915,7 @@ Public Sub RunTest_SpecialCharacters()
     rs.CloseRecordset
     DropTable conn, "t_special"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -889,6 +956,7 @@ Public Sub RunTest_Boundaries()
     rs.CloseRecordset
     DropTable conn, "t_bounds"
     conn.CloseConnection
+    EndSuite
 End Sub
 
 '==============================================================================
@@ -943,4 +1011,5 @@ Public Sub RunTest_ErrorHandling()
     cleanup.CloseConnection
 
     conn.CloseConnection
+    EndSuite
 End Sub
