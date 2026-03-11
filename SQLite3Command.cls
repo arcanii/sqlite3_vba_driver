@@ -4,7 +4,7 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Command"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
@@ -23,6 +23,17 @@ Attribute VB_Exposed = False
 '   cmd.BindTextByName ":name", "Alice"
 '   cmd.BindIntByName  ":id",   7
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. Prepare, positional and named binding,
+'            Execute, ExecuteScalar, Reset, FinalizeStatement.
+'   0.1.1 - Class_Terminate no longer calls native functions (stmt owned
+'            by connection cache). FinalizeStatement guards IsLoaded.
+'   0.1.2 - Added BindBlob, BindBlobByName, IsByteArrayInit.
+'            BindVariant handles vbByte+vbArray (type 8209) -> BLOB.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -36,11 +47,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 Private m_pStmt      As LongPtr
@@ -59,15 +67,15 @@ Private Sub Class_Terminate()
     ' Do NOT call FinalizeStatement here - the stmt handle is owned by the
     ' connection's statement cache, which may already have finalized it.
     ' Just drop the references silently.
-    m_pStmt = 0
+    m_pStmt      = 0
     m_isPrepared = False
-    Set m_conn = Nothing
+    Set m_conn   = Nothing
 End Sub
 
 Public Sub Prepare(ByVal conn As SQLite3Connection, ByVal sql As String)
-    Set m_conn = conn
-    m_sql = sql
-    m_pStmt = conn.GetCachedStatement(sql)
+    Set m_conn   = conn
+    m_sql        = sql
+    m_pStmt      = conn.GetCachedStatement(sql)
     m_isPrepared = True
 End Sub
 
@@ -78,9 +86,9 @@ Public Sub FinalizeStatement()
             sqlite3_clear_bindings m_pStmt
         End If
     End If
-    m_pStmt = 0
+    m_pStmt      = 0
     m_isPrepared = False
-    Set m_conn = Nothing
+    Set m_conn   = Nothing
 End Sub
 
 '==============================================================================
@@ -124,18 +132,46 @@ Public Sub BindNull(ByVal paramIdx As Long)
     CheckBindRC rc, "BindNull", paramIdx
 End Sub
 
+Public Sub BindBlob(ByVal paramIdx As Long, ByRef data() As Byte)
+    AssertPrepared
+    Dim rc As Long
+    If Not IsByteArrayInit(data) Then
+        rc = sqlite3_bind_null(m_pStmt, paramIdx)
+        CheckBindRC rc, "BindBlob(null)", paramIdx
+    Else
+        Dim nBytes As Long: nBytes = UBound(data) - LBound(data) + 1
+        rc = sqlite3_bind_blob(m_pStmt, paramIdx, _
+                               VarPtr(data(LBound(data))), nBytes, SQLITE_TRANSIENT)
+        CheckBindRC rc, "BindBlob", paramIdx
+    End If
+End Sub
+
+Public Sub BindBlobByName(ByVal paramName As String, ByRef data() As Byte)
+    BindBlob ParamIndex(paramName), data
+End Sub
+
 ' Smart binding: infers type from Variant
 Public Sub BindVariant(ByVal paramIdx As Long, ByVal val As Variant)
     Select Case VarType(val)
-        Case vbNull, vbEmpty:            BindNull paramIdx
-        Case vbLong, vbInteger, vbByte:  BindInt paramIdx, CLng(val)
+        Case vbNull, vbEmpty:            BindNull   paramIdx
+        Case vbLong, vbInteger, vbByte:  BindInt    paramIdx, CLng(val)
         Case vbDouble, vbSingle:         BindDouble paramIdx, CDbl(val)
         Case vbCurrency:                 BindDouble paramIdx, CDbl(val)
-        Case vbDate:                     BindText paramIdx, Format(val, "YYYY-MM-DD HH:MM:SS")
-        Case vbBoolean:                  BindInt paramIdx, IIf(val, 1, 0)
-        Case Else:                       BindText paramIdx, CStr(val)
+        Case vbDate:                     BindText   paramIdx, Format(val, "YYYY-MM-DD HH:MM:SS")
+        Case vbBoolean:                  BindInt    paramIdx, IIf(val, 1, 0)
+        Case vbByte + vbArray            ' byte array -> BLOB
+            Dim bArr() As Byte: bArr = val
+            BindBlob paramIdx, bArr
+        Case Else:                       BindText   paramIdx, CStr(val)
     End Select
 End Sub
+
+Private Function IsByteArrayInit(ByRef arr() As Byte) As Boolean
+    On Error Resume Next
+    Dim n As Long: n = UBound(arr)
+    IsByteArrayInit = (Err.Number = 0)
+    Err.Clear
+End Function
 
 '==============================================================================
 ' Named parameter binding  (:name, @name, $name)
@@ -202,8 +238,8 @@ End Sub
 '==============================================================================
 ' Properties
 '==============================================================================
-Public Property Get sql() As String
-    sql = m_sql
+Public Property Get SQL() As String
+    SQL = m_sql
 End Property
 
 Public Property Get IsPrepared() As Boolean

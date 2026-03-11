@@ -4,7 +4,7 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3BulkInsert"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
@@ -26,6 +26,17 @@ Attribute VB_Exposed = False
 ' Or feed a 2-D Variant array directly:
 '   bulk.AppendMatrix data2D   ' (rowCount, colCount)
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. AppendRow, AppendMatrix, transaction batching,
+'            single reused prepared INSERT, TotalRowsInserted property.
+'   0.1.1 - Added SQLite_IsLoaded() guard in CloseInsert.
+'            Class_Terminate no longer calls native functions.
+'            Fixed missing Set for conn assignment; UDT field copy fixed.
+'   0.1.2 - BindVariant now handles byte-array (BLOB) columns.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -39,11 +50,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 Private m_conn        As SQLite3Connection
@@ -61,30 +69,30 @@ Private m_sql         As String
 ' Lifecycle
 '==============================================================================
 Private Sub Class_Initialize()
-    m_batchSize = 10000
+    m_batchSize   = 10000
     m_rowsPending = 0
-    m_totalRows = 0
-    m_isOpen = False
+    m_totalRows   = 0
+    m_isOpen      = False
 End Sub
 
 Private Sub Class_Terminate()
     ' Drop references only - native cleanup must be done by calling CloseInsert
     ' explicitly while the DLL is still loaded.
-    Set m_cmd = Nothing
+    Set m_cmd  = Nothing
     Set m_conn = Nothing
-    m_isOpen = False
+    m_isOpen   = False
 End Sub
 
 ' colNames: 1-D array of column name strings
 Public Sub OpenInsert(ByVal conn As SQLite3Connection, _
                       ByVal tableName As String, _
                       ByVal colNames As Variant, _
-                      Optional ByVal BatchSize As Long = 10000)
+                      Optional ByVal batchSize As Long = 10000)
 
-    Set m_conn = conn
+    Set m_conn  = conn
     m_tableName = tableName
-    m_batchSize = BatchSize
-    m_colCount = UBound(colNames) - LBound(colNames) + 1
+    m_batchSize = batchSize
+    m_colCount  = UBound(colNames) - LBound(colNames) + 1
     ReDim m_colNames(m_colCount - 1)
 
     Dim i As Long
@@ -111,7 +119,7 @@ Public Sub AppendRow(ByVal rowData As Variant)
     m_cmd.Execute
     m_cmd.Reset
     m_rowsPending = m_rowsPending + 1
-    m_totalRows = m_totalRows + 1
+    m_totalRows   = m_totalRows + 1
     If m_rowsPending >= m_batchSize Then CommitBatch
 End Sub
 
@@ -135,7 +143,7 @@ Public Sub AppendMatrix(ByVal data As Variant)
         m_cmd.Execute
         m_cmd.Reset
         m_rowsPending = m_rowsPending + 1
-        m_totalRows = m_totalRows + 1
+        m_totalRows   = m_totalRows + 1
         If m_rowsPending >= m_batchSize Then CommitBatch
     Next r
 End Sub
@@ -154,7 +162,7 @@ Public Sub CloseInsert()
     If Not m_isOpen Then Exit Sub
     m_isOpen = False
     If Not SQLite3_API.SQLite_IsLoaded() Then
-        Set m_cmd = Nothing
+        Set m_cmd  = Nothing
         Set m_conn = Nothing
         Exit Sub
     End If
@@ -183,8 +191,8 @@ Public Property Let BatchSize(ByVal val As Long)
     m_batchSize = val
 End Property
 
-Public Property Get sql() As String
-    sql = m_sql
+Public Property Get SQL() As String
+    SQL = m_sql
 End Property
 
 '==============================================================================
@@ -196,7 +204,7 @@ Private Function BuildInsertSQL() As String
     For i = 0 To m_colCount - 1
         If i > 0 Then cols = cols & ",": ph = ph & ","
         cols = cols & "[" & m_colNames(i) & "]"
-        ph = ph & "?"
+        ph   = ph   & "?"
     Next i
     BuildInsertSQL = "INSERT INTO [" & m_tableName & "] (" & cols & ") VALUES (" & ph & ");"
 End Function

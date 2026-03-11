@@ -3,6 +3,17 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
+'            ConnectionPool, NamedParams, QuantDBTemplate examples.
+'   0.1.1 - Fixed Integer overflow in large literal multiplications (256&).
+'            Added Diagnose() step-by-step debug helper.
+'            Updated DLL_PATH to support System32 placement.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -16,30 +27,25 @@ Attribute VB_Name = "SQLite3_Examples"
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
-Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
+' Option A: place sqlite3.dll in C:\Windows\System32 (recommended)
+'   - No Defender scanning overhead, found by name alone
+Private Const DLL_PATH As String = "sqlite3.dll"
+
+' Option B: explicit path outside System32
+' Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
 Private Const DB_PATH  As String = "C:\sqlite\test_quant.db"
 
 '==============================================================================
 ' Example 1: Basic CRUD with ADO-style recordset
 '==============================================================================
 Public Sub Example_BasicCRUD()
-
-    Debug.Print "1. Example_BasicCRUD"
-
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH
 
-    
-    
-    
-    
     conn.ExecSQL "CREATE TABLE IF NOT EXISTS instruments (" & _
                  "  id     INTEGER PRIMARY KEY AUTOINCREMENT," & _
                  "  symbol TEXT    NOT NULL UNIQUE," & _
@@ -54,19 +60,19 @@ Public Sub Example_BasicCRUD()
 
     Dim tickers As Variant
     tickers = Array( _
-        Array("AAPL", "Apple Inc", "Technology", 0.065), _
+        Array("AAPL", "Apple Inc",      "Technology", 0.065), _
         Array("MSFT", "Microsoft Corp", "Technology", 0.058), _
-        Array("NVDA", "NVIDIA Corp", "Technology", 0.042), _
-        Array("JPM", "JPMorgan Chase", "Financials", 0.031), _
-        Array("GS", "Goldman Sachs", "Financials", 0.018))
+        Array("NVDA", "NVIDIA Corp",    "Technology", 0.042), _
+        Array("JPM",  "JPMorgan Chase", "Financials", 0.031), _
+        Array("GS",   "Goldman Sachs",  "Financials", 0.018))
 
     conn.BeginTransaction
     Dim i As Long
     For i = 0 To UBound(tickers)
         Dim row As Variant: row = tickers(i)
-        cmd.BindText 1, row(0)
-        cmd.BindText 2, row(1)
-        cmd.BindText 3, row(2)
+        cmd.BindText   1, row(0)
+        cmd.BindText   2, row(1)
+        cmd.BindText   3, row(2)
         cmd.BindDouble 4, row(3)
         cmd.Execute
         cmd.Reset
@@ -83,19 +89,18 @@ Public Sub Example_BasicCRUD()
     Debug.Print "Symbol  | Name                  | Weight"
     Debug.Print String(50, "-")
     Do While Not rs.EOF
-        Debug.Print rs!symbol & " | " & rs!name & " | " & Format(rs!Weight, "0.000")
+        Debug.Print rs!symbol & " | " & rs!name & " | " & Format(rs!weight, "0.000")
         rs.MoveNext
     Loop
     rs.CloseRecordset
     conn.CloseConnection
-    Debug.Print "1. Example_BasicCRUD Completed"
+    Debug.Print "Example_BasicCRUD complete."
 End Sub
 
 '==============================================================================
 ' Example 2: Vectorized bulk load (50x faster for large result sets)
 '==============================================================================
 Public Sub Example_VectorizedQuery()
-    Debug.Print "2. Example_VectorizedQuery"
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH, 5000, True, 256& * 1024 * 1024
 
@@ -107,7 +112,7 @@ Public Sub Example_VectorizedQuery()
 
     rs.MoveFirst
     Do While Not rs.EOF
-        Debug.Print rs!symbol & " weight=" & rs!Weight
+        Debug.Print rs!symbol & " weight=" & rs!weight
         rs.MoveNext
     Loop
 
@@ -118,15 +123,12 @@ Public Sub Example_VectorizedQuery()
 
     rs.CloseRecordset
     conn.CloseConnection
-    Debug.Print "2. Example_VectorizedQuery Completed"
 End Sub
 
 '==============================================================================
 ' Example 3: Bulk insert - 100k rows/sec
 '==============================================================================
 Public Sub Example_BulkInsert()
-    Debug.Print "3. Example_BulkInsert"
-
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH
 
@@ -137,7 +139,7 @@ Public Sub Example_BulkInsert()
     Dim bulk As New SQLite3BulkInsert
     bulk.OpenInsert conn, "tick_data", Array("symbol", "ts", "price", "volume"), 5000
 
-    Dim t0 As Double:    t0 = Timer()
+    Dim t0 As Double:    t0   = Timer()
     Dim syms As Variant: syms = Array("AAPL", "MSFT", "NVDA", "JPM", "GS")
     Dim i As Long
     For i = 1 To 50000
@@ -147,20 +149,16 @@ Public Sub Example_BulkInsert()
     bulk.CloseInsert
 
     Dim elapsed As Double: elapsed = Timer() - t0
-    Dim rate As Long:      rate = CLng(50000 / IIf(elapsed = 0, 0.001, elapsed))
+    Dim rate As Long:      rate    = CLng(50000 / IIf(elapsed = 0, 0.001, elapsed))
     Debug.Print "Inserted 50,000 rows in " & Format(elapsed, "0.00") & _
                 "s  (" & rate & " rows/sec)"
     conn.CloseConnection
-    
-    Debug.Print "3. Example_BulkInsert Completed"
 End Sub
 
 '==============================================================================
 ' Example 4: AppendMatrix - feed a pre-built 2-D array
 '==============================================================================
 Public Sub Example_MatrixInsert()
-    
-    Debug.Print "4. Example_MatrixInsert"
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH
 
@@ -185,16 +183,12 @@ Public Sub Example_MatrixInsert()
 
     Debug.Print "Matrix insert: " & bulk.TotalRowsInserted & " rows"
     conn.CloseConnection
-    
-    Debug.Print "4. Example_MatrixInsert Completed"
 End Sub
 
 '==============================================================================
 ' Example 5: Connection pool
 '==============================================================================
 Public Sub Example_ConnectionPool()
-
-    Debug.Print "5. Example_ConnectionPool"
     Dim pool As New SQLite3Pool
     pool.Initialize DB_PATH, DLL_PATH, 4, 5000, True, 64& * 1024 * 1024
 
@@ -211,16 +205,12 @@ Public Sub Example_ConnectionPool()
     pool.ReleaseConnection conn
     Debug.Print "After release - Active: " & pool.ActiveConnections
     pool.ShutDown
-    
-    Debug.Print "5. Example_ConnectionPool Completed"
 End Sub
 
 '==============================================================================
 ' Example 6: Named parameters
 '==============================================================================
 Public Sub Example_NamedParams()
-
-    Debug.Print "6. Example_NamedParams"
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH
 
@@ -233,31 +223,29 @@ Public Sub Example_NamedParams()
                       "VALUES (:symbol, :side, :qty, :price)"
 
     conn.BeginTransaction
-    cmd.BindTextByName ":symbol", "NVDA"
-    cmd.BindTextByName ":side", "BUY"
-    cmd.BindIntByName ":qty", 500
-    cmd.BindDoubleByName ":price", 875.25
+    cmd.BindTextByName   ":symbol", "NVDA"
+    cmd.BindTextByName   ":side",   "BUY"
+    cmd.BindIntByName    ":qty",    500
+    cmd.BindDoubleByName ":price",  875.25
     cmd.Execute
     cmd.Reset
 
-    cmd.BindTextByName ":symbol", "AAPL"
-    cmd.BindTextByName ":side", "SELL"
-    cmd.BindIntByName ":qty", 200
-    cmd.BindDoubleByName ":price", 182.1
+    cmd.BindTextByName   ":symbol", "AAPL"
+    cmd.BindTextByName   ":side",   "SELL"
+    cmd.BindIntByName    ":qty",    200
+    cmd.BindDoubleByName ":price",  182.1
     cmd.Execute
     cmd.Reset
     conn.CommitTransaction
 
     Debug.Print "Last rowid: " & conn.LastInsertRowID()
     conn.CloseConnection
-    Debug.Print "6. Example_NamedParams Completed"
 End Sub
 
 '==============================================================================
 ' Example 7: WAL + mmap quant database template
 '==============================================================================
 Public Sub Example_QuantDBTemplate()
-    Debug.Print "7. Example_QuantDBTemplate"
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH, 5000, True, 512& * 1024 * 1024
 
@@ -279,7 +267,7 @@ Public Sub Example_QuantDBTemplate()
     Debug.Print "Row count:    " & TableRowCount(conn, "price_history")
 
     conn.CloseConnection
-    Debug.Print "7. Example_QuantDBTemplate Completed"
+    Debug.Print "Quant DB template created."
 End Sub
 
 '==============================================================================
@@ -402,31 +390,4 @@ Public Sub Diagnose()
     Debug.Print ""
     Debug.Print "All diagnostic steps passed."
     Debug.Print String(60, "=")
-End Sub
-
-
-Public Sub DROP_ALL()
-    
-    
-    Dim conn As New SQLite3Connection
-    
-    conn.OpenDatabase DB_PATH, DLL_PATH
-    
-    Debug.Print "Dropping Table instruments"
-    conn.ExecSQL ("DROP TABLE IF EXISTS instruments")
-
-    Debug.Print "Dropping Table tick_data"
-    conn.ExecSQL ("DROP TABLE IF EXISTS tick_data")
-
-    Debug.Print "Dropping Table signals"
-    conn.ExecSQL ("DROP TABLE IF EXISTS signals")
-
-    Debug.Print "Dropping Table orders"
-    conn.ExecSQL ("DROP TABLE IF EXISTS orders")
-
-    Debug.Print "Dropping Table price_history"
-    conn.ExecSQL ("DROP TABLE IF EXISTS price_history")
-    
-    conn.CloseConnection
-
 End Sub

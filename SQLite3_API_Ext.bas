@@ -4,6 +4,16 @@ Attribute VB_Name = "SQLite3_API_Ext"
 ' Holds a secondary handle copy so helper modules can call less-common
 ' SQLite3 functions without coupling to the private proc array in SQLite3_API.
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. Secondary DLL handle copy, SetDllHandle,
+'            DispatchProc bridge for auxiliary calls.
+'   0.1.1 - Added explicit DispCallFunc Declare (prgpvarg ByRef As LongPtr).
+'            Removed illegal Declare-inside-Sub and duplicate load logic.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -17,11 +27,8 @@ Attribute VB_Name = "SQLite3_API_Ext"
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 ' -- Win32 declaration (must be at top) --------------------------------------
@@ -41,7 +48,7 @@ Private m_pBindParamIdx As LongPtr
 ' Called by SQLite3_API.SQLite_Load immediately after DLL is loaded
 '==============================================================================
 Public Sub SetDllHandle(ByVal hDll As LongPtr)
-    m_hDll = hDll
+    m_hDll          = hDll
     m_pBindParamIdx = GetProcAddress(m_hDll, "sqlite3_bind_parameter_index")
 End Sub
 

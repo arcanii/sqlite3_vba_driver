@@ -4,7 +4,7 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Recordset"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
@@ -25,6 +25,19 @@ Attribute VB_Exposed = False
 '   .GetRows(n)                   return next n rows as 2-D Variant array
 '   .CloseRecordset               release resources
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. Live mode, LoadAll vectorized mode, GetRows,
+'            ToMatrix, BOF/EOF/MoveNext/MoveLast, rs!Field default member.
+'   0.1.1 - Fixed ReDim Preserve: flipped storage to (col, row) so last
+'            dimension is rows. ToMatrix transposes to (row, col) for Excel.
+'            LoadAll guards against sqlite3_column_count returning 0 on reset.
+'            Class_Terminate no longer calls native functions.
+'   0.1.2 - LoadAll stores SQLITE_BLOB columns as Byte() in Variant matrix
+'            using sqlite3_column_blob + BlobToBytes.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -38,11 +51,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 ' -- Live-mode state ----------------------------------------------------------
@@ -69,11 +79,11 @@ Private m_isOpen       As Boolean
 ' Internal open (called by SQLite3Connection.OpenRecordset)
 '==============================================================================
 Friend Sub OpenInternal(ByVal conn As SQLite3Connection, ByVal sql As String)
-    Set m_conn = conn
-    m_sql = sql
+    Set m_conn     = conn
+    m_sql          = sql
     m_isVectorized = False
 
-    m_pStmt = conn.GetCachedStatement(sql)
+    m_pStmt    = conn.GetCachedStatement(sql)
     m_colCount = sqlite3_column_count(m_pStmt)
 
     m_stepResult = sqlite3_step(m_pStmt)
@@ -110,10 +120,10 @@ Public Function LoadAll() As Long
     End If
     If m_colCount = 0 Then
         m_isVectorized = True
-        m_rowCount = 0
-        m_bof = True
-        m_eof = True
-        LoadAll = 0
+        m_rowCount     = 0
+        m_bof          = True
+        m_eof          = True
+        LoadAll        = 0
         Exit Function
     End If
 
@@ -153,6 +163,10 @@ Public Function LoadAll() As Long
                 Case SQLITE_TEXT
                     m_data(c, m_rowCount) = SQLite3_API.PtrToStringA( _
                                              sqlite3_column_text(m_pStmt, c))
+                Case SQLITE_BLOB
+                    Dim pBlob  As LongPtr: pBlob  = sqlite3_column_blob(m_pStmt, c)
+                    Dim nBytes As Long:    nBytes = sqlite3_column_bytes(m_pStmt, c)
+                    m_data(c, m_rowCount) = SQLite3_API.BlobToBytes(pBlob, nBytes)
                 Case Else
                     m_data(c, m_rowCount) = Null
             End Select
@@ -172,10 +186,10 @@ Public Function LoadAll() As Long
     End If
 
     m_isVectorized = True
-    m_cursor = 0
-    m_bof = (m_rowCount = 0)
-    m_eof = (m_rowCount = 0)
-    LoadAll = m_rowCount
+    m_cursor       = 0
+    m_bof          = (m_rowCount = 0)
+    m_eof          = (m_rowCount = 0)
+    LoadAll        = m_rowCount
 End Function
 
 '==============================================================================
@@ -185,8 +199,8 @@ Public Sub MoveFirst()
     If m_isVectorized Then
         If m_rowCount = 0 Then m_bof = True: m_eof = True: Exit Sub
         m_cursor = 0
-        m_bof = False
-        m_eof = False
+        m_bof    = False
+        m_eof    = False
     Else
         sqlite3_reset m_pStmt
         sqlite3_clear_bindings m_pStmt
@@ -223,7 +237,7 @@ Public Sub MovePrevious()
     AssertVectorized "MovePrevious"
     If m_cursor > 0 Then
         m_cursor = m_cursor - 1
-        m_eof = False
+        m_eof    = False
     Else
         m_bof = True
     End If
@@ -233,8 +247,8 @@ Public Sub MoveLast()
     AssertVectorized "MoveLast"
     If m_rowCount = 0 Then Exit Sub
     m_cursor = m_rowCount - 1
-    m_bof = False
-    m_eof = False
+    m_bof    = False
+    m_eof    = False
 End Sub
 
 Public Sub Move(ByVal numRows As Long)
@@ -352,17 +366,17 @@ Public Sub CloseRecordset()
         End If
     End If
     Set m_fields = Nothing
-    Set m_conn = Nothing
-    m_pStmt = 0
+    Set m_conn   = Nothing
+    m_pStmt  = 0
     m_isOpen = False
 End Sub
 
 Private Sub Class_Terminate()
     ' Stmt is owned by the connection cache - do not call native functions here.
-    m_pStmt = 0
+    m_pStmt  = 0
     m_isOpen = False
     Set m_fields = Nothing
-    Set m_conn = Nothing
+    Set m_conn   = Nothing
 End Sub
 
 '==============================================================================

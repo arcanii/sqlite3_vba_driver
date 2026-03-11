@@ -4,6 +4,20 @@ Attribute VB_Name = "SQLite3_API"
 ' Architecture : LoadLibrary / GetProcAddress / DispCallFunc
 ' Key point    : prgpvarg must be ByRef LongPtr (array of ptrs to Variants)
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. LoadLibrary/DispCallFunc loader, 28 proc cache,
+'            UTF-8 marshalling, all core SQLite3 wrappers.
+'   0.1.1 - Fixed DispCallFunc declaration (prgpvarg ByRef As LongPtr).
+'            Fixed VT_PTR->VT_I8, pvInstance/oVft argument order.
+'            Replaced hand-rolled strlen loop with kernel32.lstrlenA.
+'            Fixed ToUTF8 compound Dim statement; CLngPtr(0) for null args.
+'   0.1.2 - Added sqlite3_bind_blob, sqlite3_column_blob wrappers.
+'            Added BlobToBytes() helper (CopyMemory-based, no byte loop).
+'            PROC_COUNT bumped from 28 to 30.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -17,11 +31,8 @@ Attribute VB_Name = "SQLite3_API"
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 ' -- Win32 / COM declarations -------------------------------------------------
@@ -114,7 +125,9 @@ Private Const P_BIND_PARAM_IDX As Long = 24
 Private Const P_CLEAR_BINDINGS As Long = 25
 Private Const P_TOTAL_CHANGES  As Long = 26
 Private Const P_LIBVERSION     As Long = 27
-Private Const PROC_COUNT       As Long = 28
+Private Const P_BIND_BLOB      As Long = 28
+Private Const P_COLUMN_BLOB    As Long = 29
+Private Const PROC_COUNT       As Long = 30
 
 '==============================================================================
 ' Library lifecycle
@@ -444,6 +457,43 @@ Public Function sqlite3_exec(ByVal pDb As LongPtr, _
     sqlite3_exec = CLng(ret)
 End Function
 
+Public Function sqlite3_bind_blob(ByVal pStmt As LongPtr, _
+                                   ByVal iCol As Long, _
+                                   ByVal pData As LongPtr, _
+                                   ByVal nBytes As Long, _
+                                   ByVal pDestructor As LongPtr) As Long
+    Dim args(4) As Variant, vt(4) As Integer, ptrs(4) As LongPtr, ret As Variant
+    args(0) = CLngLng(pStmt):       vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLng(iCol):           vt(1) = VT_I4: ptrs(1) = VarPtr(args(1))
+    args(2) = CLngLng(pData):       vt(2) = VT_I8: ptrs(2) = VarPtr(args(2))
+    args(3) = CLng(nBytes):         vt(3) = VT_I4: ptrs(3) = VarPtr(args(3))
+    args(4) = CLngLng(pDestructor): vt(4) = VT_I8: ptrs(4) = VarPtr(args(4))
+    DispCallFunc CLngPtr(0), m_procs(P_BIND_BLOB), CC_CDECL, VT_I4, 5, vt(0), ptrs(0), ret
+    sqlite3_bind_blob = CLng(ret)
+End Function
+
+Public Function sqlite3_column_blob(ByVal pStmt As LongPtr, _
+                                     ByVal iCol As Long) As LongPtr
+    Dim args(1) As Variant, vt(1) As Integer, ptrs(1) As LongPtr, ret As Variant
+    args(0) = CLngLng(pStmt): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLng(iCol):     vt(1) = VT_I4: ptrs(1) = VarPtr(args(1))
+    DispCallFunc CLngPtr(0), m_procs(P_COLUMN_BLOB), CC_CDECL, VT_I8, 2, vt(0), ptrs(0), ret
+    sqlite3_column_blob = CLngPtr(ret)
+End Function
+
+' Copy nBytes from a raw pointer into a VBA Byte array
+Public Function BlobToBytes(ByVal pBlob As LongPtr, ByVal nBytes As Long) As Byte()
+    Dim buf() As Byte
+    If pBlob = 0 Or nBytes <= 0 Then
+        ReDim buf(0)
+        BlobToBytes = buf
+        Exit Function
+    End If
+    ReDim buf(nBytes - 1)
+    CopyMemory buf(0), ByVal pBlob, nBytes
+    BlobToBytes = buf
+End Function
+
 '==============================================================================
 ' Private helpers
 '==============================================================================
@@ -477,6 +527,8 @@ Private Function ProcName(ByVal idx As Long) As String
         Case P_CLEAR_BINDINGS: ProcName = "sqlite3_clear_bindings"
         Case P_TOTAL_CHANGES:  ProcName = "sqlite3_total_changes"
         Case P_LIBVERSION:     ProcName = "sqlite3_libversion"
+        Case P_BIND_BLOB:      ProcName = "sqlite3_bind_blob"
+        Case P_COLUMN_BLOB:    ProcName = "sqlite3_column_blob"
         Case Else:             ProcName = ""
     End Select
 End Function

@@ -4,12 +4,23 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Field"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
 ' SQLite3Field.cls  -  ADO-style Field object (64-bit only)
 ' Zero-allocation: value reads directly against the live sqlite3_stmt*
+'
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. Name, Ordinal, Value (default member), AsString,
+'            AsLong, AsDouble, AsInt64, IsNull, ColumnType, ByteLength.
+'   0.1.1 - No functional changes.
+'   0.1.2 - Added AsBytes() typed accessor for BLOB columns.
+'            ReadBlob() rewritten to use sqlite3_column_blob + BlobToBytes
+'            (replaces slow per-byte CopyMemory loop).
+'
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
@@ -24,11 +35,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 Private m_name    As String
@@ -39,18 +47,18 @@ Private m_pStmt   As LongPtr
 ' Internal factory (called by SQLite3Fields.BuildFields)
 '==============================================================================
 Friend Sub InitField(ByVal colName As String, _
-                     ByVal Ordinal As Long, _
+                     ByVal ordinal As Long, _
                      ByVal pStmt As LongPtr)
-    m_name = colName
-    m_ordinal = Ordinal
-    m_pStmt = pStmt
+    m_name    = colName
+    m_ordinal = ordinal
+    m_pStmt   = pStmt
 End Sub
 
 '==============================================================================
 ' Properties
 '==============================================================================
-Public Property Get name() As String
-    name = m_name
+Public Property Get Name() As String
+    Name = m_name
 End Property
 
 Public Property Get Ordinal() As Long
@@ -106,6 +114,12 @@ Public Property Get ByteLength() As Long
     ByteLength = sqlite3_column_bytes(m_pStmt, m_ordinal)
 End Property
 
+Public Property Get AsBytes() As Byte()
+    Dim pBlob As LongPtr: pBlob = sqlite3_column_blob(m_pStmt, m_ordinal)
+    Dim nBytes As Long:   nBytes = sqlite3_column_bytes(m_pStmt, m_ordinal)
+    AsBytes = SQLite3_API.BlobToBytes(pBlob, nBytes)
+End Property
+
 ' Internal: refresh stmt pointer on MoveNext (called by SQLite3Fields)
 Friend Sub RefreshStmt(ByVal pStmt As LongPtr)
     m_pStmt = pStmt
@@ -115,19 +129,8 @@ End Sub
 ' Private helpers
 '==============================================================================
 Private Function ReadBlob() As Variant
-    Dim cb As Long
-    cb = sqlite3_column_bytes(m_pStmt, m_ordinal)
-    If cb = 0 Then ReadBlob = Empty: Exit Function
-    Dim buf() As Byte
-    ReDim buf(cb - 1)
-    Dim p As LongPtr
-    p = sqlite3_column_text(m_pStmt, m_ordinal)
-    If p <> 0 Then
-        Dim i As Long, b As Byte
-        For i = 0 To cb - 1
-            SQLite3_API.CopyMemoryByte b, p + i
-            buf(i) = b
-        Next i
-    End If
-    ReadBlob = buf
+    Dim pBlob  As LongPtr: pBlob  = sqlite3_column_blob(m_pStmt, m_ordinal)
+    Dim nBytes As Long:    nBytes = sqlite3_column_bytes(m_pStmt, m_ordinal)
+    If nBytes = 0 Then ReadBlob = Empty: Exit Function
+    ReadBlob = SQLite3_API.BlobToBytes(pBlob, nBytes)
 End Function

@@ -4,12 +4,21 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Fields"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
 ' SQLite3Fields.cls  -  ADO-style Fields collection (64-bit only)
 ' Enables: rs.Fields("Name").Value / rs.Fields(0).Value / rs!ColumnName
+'
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. Case-insensitive Dictionary name index,
+'            For Each enumerator, Fields("name") and Fields(0) access.
+'   0.1.1 - No functional changes.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
@@ -24,11 +33,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 Private m_fields()  As SQLite3Field

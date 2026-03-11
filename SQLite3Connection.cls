@@ -4,13 +4,24 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Connection"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
 ' SQLite3Connection.cls  -  HFT-Grade Connection Object (64-bit only)
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
+'
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
+'            mmap, 64-slot LRU statement cache, Begin/Commit/Rollback,
+'            LastInsertRowID, ChangesCount, errmsg surface.
+'   0.1.1 - CloseConnection and ClearStatementCache guard SQLite_IsLoaded().
+'            Fixed CLngPtr(0) for null args in sqlite3_open_v2 call.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
@@ -25,11 +36,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 ' -- Statement cache entry type -----------------------------------------------
@@ -56,7 +64,7 @@ Private m_isOpen     As Boolean
 ' Lifecycle
 '==============================================================================
 Private Sub Class_Initialize()
-    m_busyMs = 5000
+    m_busyMs     = 5000
     m_cacheCount = 0
     ReDim m_cache(STMT_CACHE_SIZE - 1)
     m_isOpen = False
@@ -76,7 +84,7 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
 
     If Len(dllPath) > 0 Then m_dllPath = dllPath
     If Not SQLite3_API.SQLite_IsLoaded() Then
-        If Len(m_dllPath) = 0 Then m_dllPath = ThisWorkbook.path & "\sqlite3.dll"
+        If Len(m_dllPath) = 0 Then m_dllPath = ThisWorkbook.Path & "\sqlite3.dll"
         SQLite3_API.SQLite_Load m_dllPath
     End If
 
@@ -171,8 +179,8 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
         sqlite3_finalize m_cache(oldest).hStmt
         slot = oldest
     End If
-    m_cache(slot).sqlText = sql
-    m_cache(slot).hStmt = pStmt
+    m_cache(slot).sqlText  = sql
+    m_cache(slot).hStmt    = pStmt
     m_cache(slot).lastUsed = Timer()
     GetCachedStatement = pStmt
 End Function
@@ -261,8 +269,8 @@ Public Function ChangesCount() As Long
     ChangesCount = sqlite3_changes(m_pDb)
 End Function
 
-Public Function dbPath() As String
-    dbPath = m_dbPath
+Public Function DbPath() As String
+    DbPath = m_dbPath
 End Function
 
 '==============================================================================

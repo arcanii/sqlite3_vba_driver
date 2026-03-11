@@ -4,6 +4,15 @@ Attribute VB_Name = "SQLite3_Helpers"
 ' No Declare needed here: CopyMemoryByte lives in SQLite3_API.bas,
 ' and all SQLite wrappers are in SQLite3_API.bas.
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. QueryScalar, TableExists, TableRowCount,
+'            RecordsetToRange, BindParamIndex utilities.
+'   0.1.1 - No functional changes.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -17,11 +26,8 @@ Attribute VB_Name = "SQLite3_Helpers"
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 '==============================================================================
@@ -44,14 +50,14 @@ Public Sub RecordsetToRange(ByVal rs As SQLite3Recordset, _
     If Not rs.EOF And rs.RecordCount < 0 Then rs.LoadAll
     If rs.RecordCount = 0 Then Exit Sub
 
-    Dim mat As Variant:    mat = rs.ToMatrix
+    Dim mat As Variant:    mat   = rs.ToMatrix
     Dim names() As String: names = rs.ColumnNames
     Dim nRows As Long:     nRows = rs.RecordCount
     Dim nCols As Long:     nCols = rs.FieldCount
 
-    Dim startRow As Long: startRow = topLeft.row
+    Dim startRow As Long: startRow = topLeft.Row
     Dim startCol As Long: startCol = topLeft.Column
-    Dim ws As Worksheet:  Set ws = topLeft.Worksheet
+    Dim ws As Worksheet:  Set ws  = topLeft.Worksheet
 
     If includeHeaders Then
         Dim hdr() As Variant

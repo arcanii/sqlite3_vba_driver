@@ -4,7 +4,7 @@ BEGIN
 END
 Attribute VB_Name = "SQLite3Pool"
 Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
+Attribute VB_Creatable = True
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
@@ -25,6 +25,18 @@ Attribute VB_Exposed = False
 '   ' ... use conn ...
 '   pool.ReleaseConnection conn
 '
+' Version : 0.1.2
+'
+' Version History:
+'   0.1.0 - Initial release. LRU idle reaping, auto-rollback on release,
+'            pre-warm at init, max 16 slots.
+'   0.1.1 - Initialize now calls ShutDown if already initialised.
+'            ReDim + explicit slot reset loop on every Initialize.
+'            Fixed missing Set for conn object in Acquire.
+'            CompactSlots uses explicit field assignment for UDT objects.
+'   0.1.2 - No functional changes. Version stamp updated.
+'
+'
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
 '
 '    This program is free software: you can redistribute it and/or modify
@@ -38,11 +50,8 @@ Attribute VB_Exposed = False
 '    GNU General Public License for more details.
 '
 '    You should have received a copy of the GNU General Public License
-'    along with this program.  If not, see <https://www.gnu.org/licenses/>.'
-'
-'
+'    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '==============================================================================
-
 Option Explicit
 
 Private Type PoolSlot
@@ -68,12 +77,12 @@ Private m_isInit      As Boolean
 ' Lifecycle
 '==============================================================================
 Private Sub Class_Initialize()
-    m_maxSize = 4
-    m_busyMs = 5000
-    m_mmapSize = 0
-    m_enableWAL = True
+    m_maxSize     = 4
+    m_busyMs      = 5000
+    m_mmapSize    = 0
+    m_enableWAL   = True
     m_idleTimeout = 300
-    m_slotCount = 0
+    m_slotCount   = 0
     ReDim m_slots(MAX_POOL_SIZE - 1)
     m_isInit = False
 End Sub
@@ -93,12 +102,12 @@ Public Sub Initialize(ByVal dbPath As String, _
     ' Shut down any existing connections cleanly before re-initialising
     If m_isInit Then ShutDown
 
-    m_dbPath = dbPath
-    m_dllPath = dllPath
-    m_maxSize = IIf(maxConnections > MAX_POOL_SIZE, MAX_POOL_SIZE, maxConnections)
-    m_busyMs = busyTimeoutMs
-    m_enableWAL = enableWAL
-    m_mmapSize = mmapSizeBytes
+    m_dbPath      = dbPath
+    m_dllPath     = dllPath
+    m_maxSize     = IIf(maxConnections > MAX_POOL_SIZE, MAX_POOL_SIZE, maxConnections)
+    m_busyMs      = busyTimeoutMs
+    m_enableWAL   = enableWAL
+    m_mmapSize    = mmapSizeBytes
     m_idleTimeout = idleTimeoutSec
 
     ' Explicitly zero every slot so no stale object refs remain
@@ -106,19 +115,19 @@ Public Sub Initialize(ByVal dbPath As String, _
     Dim i As Long
     For i = 0 To MAX_POOL_SIZE - 1
         Set m_slots(i).conn = Nothing
-        m_slots(i).inUse = False
+        m_slots(i).inUse    = False
         m_slots(i).lastUsed = 0
     Next i
     m_slotCount = 0
-    m_isInit = True
+    m_isInit    = True
 
     ' Pre-warm one connection
     Dim warm As SQLite3Connection
     Set warm = CreateConnection()
-    Set m_slots(0).conn = warm
-    m_slots(0).inUse = False
-    m_slots(0).lastUsed = Timer()
-    m_slotCount = 1
+    Set m_slots(0).conn  = warm
+    m_slots(0).inUse     = False
+    m_slots(0).lastUsed  = Timer()
+    m_slotCount          = 1
 End Sub
 
 '==============================================================================
@@ -132,7 +141,7 @@ Public Function Acquire() As SQLite3Connection
     For i = 0 To m_slotCount - 1
         If Not m_slots(i).inUse Then
             If m_slots(i).conn.IsOpen Then
-                m_slots(i).inUse = True
+                m_slots(i).inUse    = True
                 m_slots(i).lastUsed = Timer()
                 Set Acquire = m_slots(i).conn
                 Exit Function
@@ -144,7 +153,7 @@ Public Function Acquire() As SQLite3Connection
         Dim newConn As SQLite3Connection
         Set newConn = CreateConnection()
         Set m_slots(m_slotCount).conn = newConn
-        m_slots(m_slotCount).inUse = True
+        m_slots(m_slotCount).inUse    = True
         m_slots(m_slotCount).lastUsed = Timer()
         m_slotCount = m_slotCount + 1
         Set Acquire = newConn
@@ -162,7 +171,7 @@ Public Sub ReleaseConnection(ByVal conn As SQLite3Connection)
     For i = 0 To m_slotCount - 1
         If m_slots(i).conn Is conn Then
             If conn.InTransaction Then conn.RollbackTransaction
-            m_slots(i).inUse = False
+            m_slots(i).inUse    = False
             m_slots(i).lastUsed = Timer()
             Exit Sub
         End If
@@ -201,7 +210,7 @@ Public Sub ShutDown()
         End If
     Next i
     m_slotCount = 0
-    m_isInit = False
+    m_isInit    = False
 End Sub
 
 '==============================================================================
@@ -235,13 +244,13 @@ End Sub
 Private Sub CompactSlots(ByVal removedIdx As Long)
     Dim i As Long
     For i = removedIdx To m_slotCount - 2
-        Set m_slots(i).conn = m_slots(i + 1).conn
-        m_slots(i).inUse = m_slots(i + 1).inUse
-        m_slots(i).lastUsed = m_slots(i + 1).lastUsed
+        Set m_slots(i).conn  = m_slots(i + 1).conn
+        m_slots(i).inUse     = m_slots(i + 1).inUse
+        m_slots(i).lastUsed  = m_slots(i + 1).lastUsed
     Next i
     m_slotCount = m_slotCount - 1
     Set m_slots(m_slotCount).conn = Nothing
-    m_slots(m_slotCount).inUse = False
+    m_slots(m_slotCount).inUse    = False
     m_slots(m_slotCount).lastUsed = 0
 End Sub
 
