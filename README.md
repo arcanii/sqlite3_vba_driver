@@ -18,6 +18,33 @@ Releases Page
 =======
 https://github.com/arcanii/sqlite3_vba_driver/releases
 
+Security
+=======
+1. Microsoft Excel has default security settings that slow down this driver 1000x (the universe may end before the 122 tests can run).
+2. In Excel File->Options->Trust Center, click "Trust Center Settings..." button.
+3. Macro Settings tab: `Enable VBA Macros.`
+4. Trusted Location tab: `"Add new location..."` and set it to the dir you will use e.g. ("C:/sqlite").
+
+
+TLDR Section (for those who want it to work fast)
+=======
+1. Get the sqlite3.dll from [sqlite.org/download](https://sqlite.org/download.html).
+2. You need to have Microsoft Excel (64-bit) installed.
+3. Make a directory (e.g. "C:\sqlite\") : this can go anywhere you want, but if you change this you also need to change the excel file in step 7.
+4. Put the sqlite3.dll in the directory you made in step 3 ("C:\sqlite\" if you want to avoid future work in step 7).
+5. Download the Excel file "Test-SQLite3-VBA-Driver.xlsm" from this GitHub repo, open it and turn on macros.
+6. Do a (`Alt+F11`) to open the Visual Basic editor. 
+7. ONLY if you changed "C:\sqlite\" to something else ... look for, and make changes as below.
+8. find the "SQQLite3_Tests.bas" in the 'Project - VBAProject' explorer window, at the top of the file look for the file locations.
+9. Change this to your DLL location: `Private Const DLL_PATH  As String = "C:\sqlite\sqlite3.dll"`
+10. Change this to where you want the DB location: `Private Const DB_PATH   As String = "C:\sqlite\driver_test.db"`
+11. In the 'Immediate window', type `RunAllTests` and hit enter. Reminder: to show the Immediate window do a (`Ctrl+G`).
+10. If everything is ok, the tests should run and produce a report (before the universe ends).
+
+
+
+
+
 ---
 
 ## Features
