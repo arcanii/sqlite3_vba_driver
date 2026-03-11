@@ -25,7 +25,7 @@ Attribute VB_Exposed = False
 '   .GetRows(n)                   return next n rows as 2-D Variant array
 '   .CloseRecordset               release resources
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. Live mode, LoadAll vectorized mode, GetRows,
@@ -36,6 +36,7 @@ Attribute VB_Exposed = False
 '            Class_Terminate no longer calls native functions.
 '   0.1.2 - LoadAll stores SQLITE_BLOB columns as Byte() in Variant matrix
 '            using sqlite3_column_blob + BlobToBytes.
+'   0.1.3 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

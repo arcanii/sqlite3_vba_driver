@@ -3,7 +3,7 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
@@ -12,6 +12,7 @@ Attribute VB_Name = "SQLite3_Examples"
 '            Added Diagnose() step-by-step debug helper.
 '            Updated DLL_PATH to support System32 placement.
 '   0.1.2 - No functional changes. Version stamp updated.
+'   0.1.3 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

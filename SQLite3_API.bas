@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_API"
 ' Architecture : LoadLibrary / GetProcAddress / DispCallFunc
 ' Key point    : prgpvarg must be ByRef LongPtr (array of ptrs to Variants)
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. LoadLibrary/DispCallFunc loader, 28 proc cache,
@@ -16,6 +16,8 @@ Attribute VB_Name = "SQLite3_API"
 '   0.1.2 - Added sqlite3_bind_blob, sqlite3_column_blob wrappers.
 '            Added BlobToBytes() helper (CopyMemory-based, no byte loop).
 '            PROC_COUNT bumped from 28 to 30.
+'   0.1.3 - Added sqlite3_interrupt wrapper.
+'            P_INTERRUPT = 30; PROC_COUNT bumped to 31.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -127,7 +129,8 @@ Private Const P_TOTAL_CHANGES  As Long = 26
 Private Const P_LIBVERSION     As Long = 27
 Private Const P_BIND_BLOB      As Long = 28
 Private Const P_COLUMN_BLOB    As Long = 29
-Private Const PROC_COUNT       As Long = 30
+Private Const P_INTERRUPT      As Long = 30
+Private Const PROC_COUNT       As Long = 31
 
 '==============================================================================
 ' Library lifecycle
@@ -494,6 +497,15 @@ Public Function BlobToBytes(ByVal pBlob As LongPtr, ByVal nBytes As Long) As Byt
     BlobToBytes = buf
 End Function
 
+' Signal a running query to abort.  Safe to call from a timer or any
+' point in VBA while a Step/Exec call is pending on the same connection.
+' SQLite returns SQLITE_INTERRUPT (9) to the blocked call.
+Public Sub sqlite3_interrupt(ByVal pDb As LongPtr)
+    Dim args(0) As Variant, vt(0) As Integer, ptrs(0) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb): vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    DispCallFunc CLngPtr(0), m_procs(P_INTERRUPT), CC_CDECL, VT_I4, 1, vt(0), ptrs(0), ret
+End Sub
+
 '==============================================================================
 ' Private helpers
 '==============================================================================
@@ -529,6 +541,7 @@ Private Function ProcName(ByVal idx As Long) As String
         Case P_LIBVERSION:     ProcName = "sqlite3_libversion"
         Case P_BIND_BLOB:      ProcName = "sqlite3_bind_blob"
         Case P_COLUMN_BLOB:    ProcName = "sqlite3_column_blob"
+        Case P_INTERRUPT:      ProcName = "sqlite3_interrupt"
         Case Else:             ProcName = ""
     End Select
 End Function

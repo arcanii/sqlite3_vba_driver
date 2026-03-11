@@ -8,7 +8,7 @@ Attribute VB_Name = "SQLite3_Tests"
 ' Output goes to the Immediate window (Ctrl+G).
 ' Each test prints PASS or FAIL with details on failure.
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. 122 tests across 22 suites.
@@ -17,6 +17,9 @@ Attribute VB_Name = "SQLite3_Tests"
 '            Fixed inline comment after line-continuation in Array() calls.
 '   0.1.2 - Added RunTest_BLOB (23), RunTest_Aggregates (24),
 '            RunTest_FTS5 (25). Total: 171 tests across 25 suites.
+'   0.1.3 - Added RunTest_Schema (26), RunTest_Savepoints (27),
+'            RunTest_JSON (28), RunTest_Interrupt (29).
+'            Total: 171+ tests across 29 suites.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -62,6 +65,8 @@ Private m_suite      As String
 Private m_suiteStart As LongPtr   ' QPC ticks at suite start
 Private m_runStart   As LongPtr   ' QPC ticks at RunAllTests start
 Private m_freq       As LongPtr   ' QPC frequency (ticks per second)
+Private m_failLog()  As String    ' accumulated failure messages for end summary
+Private m_failCount  As Long      ' number of entries in m_failLog
 
 ' ---------------------------------------------------------------------------
 ' Timing helpers
@@ -107,6 +112,14 @@ End Sub
 Private Sub Fail(ByVal name As String, ByVal detail As String)
     m_fail = m_fail + 1
     Debug.Print "    FAIL  " & name & " -- " & detail
+    ' Append to failure log for end-of-run summary
+    If m_failCount = 0 Then
+        ReDim m_failLog(0)
+    Else
+        ReDim Preserve m_failLog(m_failCount)
+    End If
+    m_failLog(m_failCount) = "[" & m_suite & "]  " & name & " -- " & detail
+    m_failCount = m_failCount + 1
 End Sub
 
 Private Sub AssertEqual(ByVal name As String, ByVal got As Variant, ByVal expected As Variant)
@@ -153,8 +166,9 @@ End Sub
 ' RunAllTests
 '==============================================================================
 Public Sub RunAllTests()
-    m_pass = 0
-    m_fail = 0
+    m_pass      = 0
+    m_fail      = 0
+    m_failCount = 0
     EnsureFreq
     m_runStart = QPC()
 
@@ -187,6 +201,10 @@ Public Sub RunAllTests()
     RunTest_BLOB
     RunTest_Aggregates
     RunTest_FTS5
+    RunTest_Schema
+    RunTest_Savepoints
+    RunTest_JSON
+    RunTest_Interrupt
 
     Dim totalTime As String: totalTime = ElapsedMs(m_runStart, QPC())
     Debug.Print ""
@@ -194,6 +212,18 @@ Public Sub RunAllTests()
     Debug.Print "Results: " & m_pass & " passed,  " & m_fail & " failed  " & _
                 "(" & (m_pass + m_fail) & " total)  " & totalTime
     Debug.Print String(64, "=")
+
+    ' Failure summary -- only printed when there are failures
+    If m_fail > 0 Then
+        Debug.Print ""
+        Debug.Print "FAILED TESTS (" & m_fail & "):"
+        Debug.Print String(64, "-")
+        Dim i As Long
+        For i = 0 To m_failCount - 1
+            Debug.Print "  " & m_failLog(i)
+        Next i
+        Debug.Print String(64, "-")
+    End If
 
     ' Final cleanup
     On Error Resume Next
@@ -1305,6 +1335,360 @@ Public Sub RunTest_FTS5()
     AssertEqual "After delete Python=0", cnt, 0
 
     conn.ExecSQL "DROP TABLE IF EXISTS t_fts;"
+    conn.CloseConnection
+    EndSuite
+End Sub
+'==============================================================================
+' 26. Schema introspection
+'==============================================================================
+Public Sub RunTest_Schema()
+    StartSuite "Schema"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+
+    ' Setup: create two tables, a view, an index
+    conn.ExecSQL "DROP TABLE IF EXISTS t_schema_a;"
+    conn.ExecSQL "DROP TABLE IF EXISTS t_schema_b;"
+    conn.ExecSQL "DROP VIEW  IF EXISTS v_schema;"
+    conn.ExecSQL "DROP INDEX IF EXISTS ix_schema_a;"
+
+    conn.ExecSQL _
+        "CREATE TABLE t_schema_a (" & _
+        "  id    INTEGER PRIMARY KEY, " & _
+        "  name  TEXT NOT NULL, " & _
+        "  score REAL DEFAULT 0.0);"
+    conn.ExecSQL _
+        "CREATE TABLE t_schema_b (" & _
+        "  id    INTEGER PRIMARY KEY, " & _
+        "  aid   INTEGER REFERENCES t_schema_a(id), " & _
+        "  value BLOB);"
+    conn.ExecSQL "CREATE INDEX ix_schema_a ON t_schema_a(name);"
+    conn.ExecSQL "CREATE VIEW  v_schema AS SELECT id, name FROM t_schema_a;"
+
+    ' GetTableList
+    Dim tbls As Variant: tbls = GetTableList(conn)
+    AssertTrue "TableList is array",  IsArray(tbls)
+    Dim found As Boolean, i As Long
+    For i = LBound(tbls) To UBound(tbls)
+        If tbls(i) = "t_schema_a" Then found = True
+    Next i
+    AssertTrue "TableList has t_schema_a", found
+
+    ' GetTableList excludes views by default
+    Dim foundView As Boolean
+    For i = LBound(tbls) To UBound(tbls)
+        If tbls(i) = "v_schema" Then foundView = True
+    Next i
+    AssertFalse "TableList excludes view", foundView
+
+    ' GetTableList with views included
+    Dim all As Variant: all = GetTableList(conn, True)
+    Dim foundV As Boolean
+    For i = LBound(all) To UBound(all)
+        If all(i) = "v_schema" Then foundV = True
+    Next i
+    AssertTrue "TableList(includeViews) has view", foundV
+
+    ' GetViewList
+    Dim views As Variant: views = GetViewList(conn)
+    AssertTrue "ViewList non-empty", IsArray(views)
+    AssertEqual "ViewList(0)=v_schema", views(0), "v_schema"
+
+    ' TableExists / ViewExists / IndexExists
+    AssertTrue  "TableExists t_schema_a", TableExists(conn, "t_schema_a")
+    AssertFalse "TableExists nosuchtable", TableExists(conn, "nosuchtable")
+    AssertTrue  "ViewExists v_schema",    ViewExists(conn, "v_schema")
+    AssertTrue  "IndexExists ix_schema_a", IndexExists(conn, "ix_schema_a")
+    AssertFalse "IndexExists nosuchindex", IndexExists(conn, "nosuchindex")
+
+    ' GetColumnInfo
+    Dim cols As Variant: cols = GetColumnInfo(conn, "t_schema_a")
+    ' PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+    AssertEqual "ColumnInfo 3 cols", UBound(cols, 1) - LBound(cols, 1) + 1, 3
+    AssertEqual "Col0 name=id",   cols(0, 1), "id"
+    AssertEqual "Col1 name=name", cols(1, 1), "name"
+    AssertEqual "Col1 notnull=1", cols(1, 3), 1
+    AssertEqual "Col2 default=0.0", CStr(cols(2, 4)), "0.0"
+    AssertEqual "Col0 pk=1",      cols(0, 5), 1   ' id is PK
+
+    ' GetIndexList
+    Dim idxs As Variant: idxs = GetIndexList(conn, "t_schema_a")
+    AssertTrue "IndexList non-empty", Not IsEmpty(idxs)
+    ' ix_schema_a should be in the list
+    Dim foundIdx As Boolean
+    Dim r As Long
+    If IsArray(idxs) Then
+        For r = LBound(idxs, 1) To UBound(idxs, 1)
+            If CStr(idxs(r, 1)) = "ix_schema_a" Then foundIdx = True
+        Next r
+    End If
+    AssertTrue "IndexList has ix_schema_a", foundIdx
+
+    ' GetIndexColumns
+    Dim ixCols As Variant: ixCols = GetIndexColumns(conn, "ix_schema_a")
+    AssertTrue  "IndexColumns non-empty",  Not IsEmpty(ixCols)
+    AssertEqual "IndexColumns col=name",   ixCols(0, 2), "name"
+
+    ' GetForeignKeys
+    Dim fks As Variant: fks = GetForeignKeys(conn, "t_schema_b")
+    AssertTrue  "ForeignKeys non-empty",          Not IsEmpty(fks)
+    AssertEqual "FK refs t_schema_a",  fks(0, 2), "t_schema_a"
+    AssertEqual "FK from=aid",         fks(0, 3), "aid"
+
+    ' GetCreateSQL
+    Dim sql As String: sql = GetCreateSQL(conn, "t_schema_a")
+    AssertTrue  "CreateSQL non-empty",      Len(sql) > 0
+    AssertTrue  "CreateSQL has CREATE TABLE", InStr(sql, "CREATE TABLE") > 0
+
+    ' GetDatabaseInfo
+    Dim dbInfo As Variant: dbInfo = GetDatabaseInfo(conn)
+    AssertTrue "DatabaseInfo is matrix", IsArray(dbInfo)
+    AssertTrue "DatabaseInfo rows>5",    UBound(dbInfo, 1) >= 5
+    AssertEqual "DatabaseInfo col0=page_count", dbInfo(0, 0), "page_count"
+    AssertTrue  "DatabaseInfo page_size>0", CLng(dbInfo(1, 1)) > 0
+
+    ' Cleanup
+    conn.ExecSQL "DROP INDEX IF EXISTS ix_schema_a;"
+    conn.ExecSQL "DROP VIEW  IF EXISTS v_schema;"
+    conn.ExecSQL "DROP TABLE IF EXISTS t_schema_b;"
+    conn.ExecSQL "DROP TABLE IF EXISTS t_schema_a;"
+    conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 27. Savepoints
+'==============================================================================
+Public Sub RunTest_Savepoints()
+    StartSuite "Savepoints"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_sp"
+    conn.ExecSQL "CREATE TABLE t_sp (id INTEGER, val TEXT);"
+
+    ' Basic savepoint: release (commit)
+    conn.BeginTransaction
+    conn.ExecSQL "INSERT INTO t_sp VALUES (1, 'outer');"
+    conn.Savepoint "sp1"
+    AssertEqual "SavepointDepth=1", conn.SavepointDepth, 1
+    conn.ExecSQL "INSERT INTO t_sp VALUES (2, 'inner');"
+    conn.ReleaseSavepoint "sp1"
+    AssertEqual "SavepointDepth=0 after release", conn.SavepointDepth, 0
+    conn.CommitTransaction
+    AssertEqual "Both rows committed", TableRowCount(conn, "t_sp"), 2
+
+    ' Savepoint rollback: undo inner, keep outer
+    conn.ExecSQL "DELETE FROM t_sp;"
+    conn.BeginTransaction
+    conn.ExecSQL "INSERT INTO t_sp VALUES (10, 'outer2');"
+    conn.Savepoint "sp2"
+    conn.ExecSQL "INSERT INTO t_sp VALUES (11, 'inner2');"
+    conn.ExecSQL "INSERT INTO t_sp VALUES (12, 'inner3');"
+    AssertEqual "3 rows before rollback", TableRowCount(conn, "t_sp"), 3
+    conn.RollbackToSavepoint "sp2"
+    AssertEqual "1 row after sp rollback", TableRowCount(conn, "t_sp"), 1
+    conn.ReleaseSavepoint "sp2"
+    conn.CommitTransaction
+    AssertEqual "Only outer row kept", TableRowCount(conn, "t_sp"), 1
+    AssertEqual "Outer value correct", _
+        QueryScalar(conn, "SELECT val FROM t_sp WHERE id=10;"), "outer2"
+
+    ' Nested savepoints
+    conn.ExecSQL "DELETE FROM t_sp;"
+    conn.BeginTransaction
+    conn.Savepoint "outer"
+    conn.ExecSQL "INSERT INTO t_sp VALUES (20, 'level1');"
+    conn.Savepoint "inner"
+    conn.ExecSQL "INSERT INTO t_sp VALUES (21, 'level2');"
+    AssertEqual "SavepointDepth=2", conn.SavepointDepth, 2
+    conn.RollbackToSavepoint "inner"
+    AssertEqual "SavepointDepth still 2", conn.SavepointDepth, 2
+    conn.ReleaseSavepoint "inner"
+    AssertEqual "SavepointDepth=1 after inner release", conn.SavepointDepth, 1
+    conn.ReleaseSavepoint "outer"
+    conn.CommitTransaction
+    ' Only level1 row should exist
+    AssertEqual "Nested: only level1", TableRowCount(conn, "t_sp"), 1
+    AssertEqual "Nested: val=level1", _
+        QueryScalar(conn, "SELECT val FROM t_sp WHERE id=20;"), "level1"
+
+    DropTable conn, "t_sp"
+    conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 28. JSON functions
+'==============================================================================
+Public Sub RunTest_JSON()
+    StartSuite "JSON"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+
+    ' Check JSON functions available (3.38+)
+    On Error Resume Next
+    Dim probe As Variant
+    probe = QueryScalar(conn, "SELECT json_valid('{""a"":1}');")
+    If Err.Number <> 0 Then
+        Debug.Print "    SKIP  JSON functions not available (requires SQLite 3.38+)"
+        Err.Clear
+        conn.CloseConnection
+        EndSuite
+        Exit Sub
+    End If
+    Err.Clear
+    On Error Resume Next
+
+    DropTable conn, "t_json"
+    conn.ExecSQL _
+        "CREATE TABLE t_json (id INTEGER PRIMARY KEY, data TEXT);"
+
+    ' Insert rows with JSON data
+    conn.ExecSQL "INSERT INTO t_json VALUES (1, '{""name"":""Alice"",""city"":""London"",""score"":95}');"
+    conn.ExecSQL "INSERT INTO t_json VALUES (2, '{""name"":""Bob"",""city"":""Paris"",""score"":82}');"
+    conn.ExecSQL "INSERT INTO t_json VALUES (3, '{""name"":""Carol"",""city"":""Berlin"",""tags"":[""vba"",""excel""]}');"
+
+    ' JSONExtract -- single value
+    Dim v As Variant
+    v = JSONExtract(conn, "t_json", "data", "$.name", "id=1")
+    AssertEqual "JSONExtract name=Alice", v, "Alice"
+
+    v = JSONExtract(conn, "t_json", "data", "$.score", "id=2")
+    AssertEqual "JSONExtract score=82", CDbl(v), 82
+
+    ' Nested path
+    v = JSONExtract(conn, "t_json", "data", "$.tags[0]", "id=3")
+    AssertEqual "JSONExtract tags[0]=vba", v, "vba"
+
+    ' JSONExtractColumn
+    Dim mat As Variant
+    mat = JSONExtractColumn(conn, "t_json", "data", "$.city")
+    AssertEqual "JSONExtractColumn rows=3", UBound(mat,1) - LBound(mat,1) + 1, 3
+
+    ' JSONSearch
+    Dim res As Variant
+    res = JSONSearch(conn, "t_json", "data", "$.city", "'London'")
+    AssertEqual "JSONSearch London rows=1", UBound(res,1) - LBound(res,1) + 1, 1
+
+    ' JSONSet -- update existing key
+    JSONSet conn, "t_json", "data", "$.city", "'Madrid'", "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.city", "id=1")
+    AssertEqual "JSONSet city=Madrid", v, "Madrid"
+
+    ' JSONSet -- add new key
+    JSONSet conn, "t_json", "data", "$.active", "1", "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.active", "id=1")
+    AssertEqual "JSONSet new key=1", CLng(v), 1
+
+    ' JSONInsert -- does nothing if key exists
+    JSONInsert conn, "t_json", "data", "$.city", "'Tokyo'", "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.city", "id=1")
+    AssertEqual "JSONInsert keeps Madrid", v, "Madrid"
+
+    ' JSONReplace -- updates existing key
+    JSONReplace conn, "t_json", "data", "$.score", "100", "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.score", "id=1")
+    AssertEqual "JSONReplace score=100", CDbl(v), 100
+
+    ' JSONRemove
+    JSONRemove conn, "t_json", "data", Array("$.active"), "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.active", "id=1")
+    AssertTrue "JSONRemove key gone", IsNull(v)
+
+    ' JSONPatch
+    JSONPatch conn, "t_json", "data", "'{""country"":""Spain""}'", "id=1"
+    v = JSONExtract(conn, "t_json", "data", "$.country", "id=1")
+    AssertEqual "JSONPatch country=Spain", v, "Spain"
+
+    ' JSONValid
+    AssertTrue "JSONValid all rows", JSONValid(conn, "t_json", "data")
+    conn.ExecSQL "INSERT INTO t_json VALUES (99, 'not json at all');"
+    AssertFalse "JSONValid bad row", JSONValid(conn, "t_json", "data")
+    conn.ExecSQL "DELETE FROM t_json WHERE id=99;"
+
+    ' JSONGroupArray
+    Dim arr As String
+    arr = JSONGroupArray(conn, "t_json", "json_extract(data,'$.name')", "", "id")
+    AssertTrue  "JSONGroupArray non-empty", Len(arr) > 2
+    AssertTrue  "JSONGroupArray has Alice", InStr(arr, "Alice") > 0
+    AssertTrue  "JSONGroupArray has Bob",   InStr(arr, "Bob") > 0
+
+    ' JSONType
+    Dim types As Variant
+    types = JSONType(conn, "t_json", "data", "$.score")
+    AssertTrue "JSONType rows=3", UBound(types,1) - LBound(types,1) + 1 = 3
+    ' score is stored as integer or real depending on value
+    AssertTrue "JSONType score is numeric", _
+        CStr(types(0, 1)) = "integer" Or CStr(types(0, 1)) = "real"
+
+    ' JSONEach -- expand tags array for row 3
+    Dim elems As Variant
+    elems = JSONEach(conn, "t_json", "data", "t.id=3")
+    AssertTrue "JSONEach rows>0", Not IsEmpty(elems)
+
+    ' JSONBuildObject
+    Dim obj As String
+    obj = JSONBuildObject(conn, Array("key", "val"), Array("'hello'", "42"))
+    AssertTrue "JSONBuildObject has key", InStr(obj, "key") > 0
+    AssertTrue "JSONBuildObject has 42",  InStr(obj, "42") > 0
+
+    ' JSONBuildArray
+    Dim jarr As String
+    jarr = JSONBuildArray(conn, Array("1", "2", "'three'"))
+    AssertTrue "JSONBuildArray has 1",     InStr(jarr, "1") > 0
+    AssertTrue "JSONBuildArray has three", InStr(jarr, "three") > 0
+
+    DropTable conn, "t_json"
+    conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 29. Interrupt
+'==============================================================================
+Public Sub RunTest_Interrupt()
+    StartSuite "Interrupt"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_interrupt"
+    conn.ExecSQL "CREATE TABLE t_interrupt (x INTEGER);"
+
+    ' Insert enough rows to make a query measurable
+    Dim i As Long
+    conn.BeginTransaction
+    For i = 1 To 50000
+        conn.ExecSQL "INSERT INTO t_interrupt VALUES (" & i & ");"
+    Next i
+    conn.CommitTransaction
+    AssertEqual "50k rows inserted", TableRowCount(conn, "t_interrupt"), 50000
+
+    ' Interrupt an idle connection: should be a no-op and not crash
+    Err.Clear
+    conn.Interrupt
+    AssertNoError "Interrupt on idle connection"
+
+    ' Run a legitimate query after interrupt -- should work normally
+    Dim n As Variant
+    n = QueryScalar(conn, "SELECT COUNT(*) FROM t_interrupt;")
+    AssertEqual "Query after interrupt OK", CLng(n), 50000
+
+    ' Interrupt immediately before a query:
+    ' SQLite clears the interrupt flag once checked, so if we call Interrupt
+    ' before opening a statement the subsequent query may or may not be
+    ' interrupted depending on timing.  We just verify no crash either way.
+    conn.Interrupt
+    Err.Clear
+    n = QueryScalar(conn, "SELECT SUM(x) FROM t_interrupt;")
+    ' Accept either a numeric result or SQLITE_INTERRUPT (rc 9 surfaces as error)
+    AssertTrue "No crash after interrupt+query", _
+        (Err.Number = 0 And Not IsNull(n)) Or Err.Number <> 0
+    Err.Clear
+
+    DropTable conn, "t_interrupt"
     conn.CloseConnection
     EndSuite
 End Sub

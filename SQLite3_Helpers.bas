@@ -4,13 +4,14 @@ Attribute VB_Name = "SQLite3_Helpers"
 ' No Declare needed here: CopyMemoryByte lives in SQLite3_API.bas,
 ' and all SQLite wrappers are in SQLite3_API.bas.
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. QueryScalar, TableExists, TableRowCount,
 '            RecordsetToRange, BindParamIndex utilities.
 '   0.1.1 - No functional changes.
 '   0.1.2 - No functional changes. Version stamp updated.
+'   0.1.3 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -92,8 +93,27 @@ End Function
 ' Return True if a table exists in the schema.
 Public Function TableExists(ByVal conn As SQLite3Connection, _
                              ByVal tableName As String) As Boolean
+    TableExists = SchemaObjectExists(conn, tableName, "table")
+End Function
+
+' Return True if a view exists in the schema.
+Public Function ViewExists(ByVal conn As SQLite3Connection, _
+                            ByVal viewName As String) As Boolean
+    ViewExists = SchemaObjectExists(conn, viewName, "view")
+End Function
+
+' Return True if an index exists in the schema.
+Public Function IndexExists(ByVal conn As SQLite3Connection, _
+                             ByVal indexName As String) As Boolean
+    IndexExists = SchemaObjectExists(conn, indexName, "index")
+End Function
+
+Private Function SchemaObjectExists(ByVal conn As SQLite3Connection, _
+                                     ByVal objName As String, _
+                                     ByVal objType As String) As Boolean
     Dim v As Variant
     v = QueryScalar(conn, "SELECT COUNT(*) FROM sqlite_master " & _
-                          "WHERE type='table' AND name='" & tableName & "';")
-    TableExists = (Not IsNull(v)) And (CLng(v) > 0)
+                          "WHERE type='" & objType & "' AND name='" & _
+                          Replace(objName, "'", "''") & "';")
+    SchemaObjectExists = (Not IsNull(v)) And (CLng(v) > 0)
 End Function

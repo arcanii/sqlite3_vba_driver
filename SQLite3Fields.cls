@@ -11,13 +11,14 @@ Attribute VB_Exposed = False
 ' SQLite3Fields.cls  -  ADO-style Fields collection (64-bit only)
 ' Enables: rs.Fields("Name").Value / rs.Fields(0).Value / rs!ColumnName
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. Case-insensitive Dictionary name index,
 '            For Each enumerator, Fields("name") and Fields(0) access.
 '   0.1.1 - No functional changes.
 '   0.1.2 - No functional changes. Version stamp updated.
+'   0.1.3 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

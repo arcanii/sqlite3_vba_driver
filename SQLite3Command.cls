@@ -23,7 +23,7 @@ Attribute VB_Exposed = False
 '   cmd.BindTextByName ":name", "Alice"
 '   cmd.BindIntByName  ":id",   7
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. Prepare, positional and named binding,
@@ -32,6 +32,7 @@ Attribute VB_Exposed = False
 '            by connection cache). FinalizeStatement guards IsLoaded.
 '   0.1.2 - Added BindBlob, BindBlobByName, IsByteArrayInit.
 '            BindVariant handles vbByte+vbArray (type 8209) -> BLOB.
+'   0.1.3 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

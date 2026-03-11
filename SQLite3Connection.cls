@@ -12,7 +12,7 @@ Attribute VB_Exposed = False
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
 '
-' Version : 0.1.2
+' Version : 0.1.3
 '
 ' Version History:
 '   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
@@ -21,6 +21,8 @@ Attribute VB_Exposed = False
 '   0.1.1 - CloseConnection and ClearStatementCache guard SQLite_IsLoaded().
 '            Fixed CLngPtr(0) for null args in sqlite3_open_v2 call.
 '   0.1.2 - No functional changes. Version stamp updated.
+'   0.1.3 - Added Savepoint, ReleaseSavepoint, RollbackToSavepoint,
+'            SavepointDepth, Interrupt. Added m_savepointDepth state.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -54,11 +56,12 @@ Private m_pDb        As LongPtr
 Private m_dllPath    As String
 Private m_dbPath     As String
 Private m_busyMs     As Long
-Private m_inTx       As Boolean
-Private m_cache()    As StmtCacheEntry
-Private m_cacheCount As Long
-Private m_lastError  As String
-Private m_isOpen     As Boolean
+Private m_inTx            As Boolean
+Private m_savepointDepth  As Long
+Private m_cache()         As StmtCacheEntry
+Private m_cacheCount      As Long
+Private m_lastError       As String
+Private m_isOpen          As Boolean
 
 '==============================================================================
 ' Lifecycle
@@ -245,6 +248,45 @@ End Sub
 Public Property Get InTransaction() As Boolean
     InTransaction = m_inTx
 End Property
+
+'==============================================================================
+' Savepoints  (nested transactions - SQL:2003)
+' A savepoint is a named point within a transaction that can be rolled back
+' to independently, without affecting the outer transaction.
+' Savepoints are reentrant: you can nest them arbitrarily deep.
+'==============================================================================
+Public Sub Savepoint(ByVal spName As String)
+    AssertOpen
+    ExecSQL "SAVEPOINT [" & spName & "];"
+    m_savepointDepth = m_savepointDepth + 1
+End Sub
+
+' Commit everything back to (and remove) the named savepoint.
+Public Sub ReleaseSavepoint(ByVal spName As String)
+    AssertOpen
+    ExecSQL "RELEASE SAVEPOINT [" & spName & "];"
+    If m_savepointDepth > 0 Then m_savepointDepth = m_savepointDepth - 1
+End Sub
+
+' Undo all changes made after the savepoint without leaving the transaction.
+Public Sub RollbackToSavepoint(ByVal spName As String)
+    AssertOpen
+    ExecSQL "ROLLBACK TO SAVEPOINT [" & spName & "];"
+End Sub
+
+Public Property Get SavepointDepth() As Long
+    SavepointDepth = m_savepointDepth
+End Property
+
+'==============================================================================
+' Interrupt
+' Signal SQLite to abort any pending query on this connection at the next
+' opportunity.  The blocked call returns SQLITE_INTERRUPT (rc=9).
+' Safe to call at any time, including from a timer, while a query is running.
+'==============================================================================
+Public Sub Interrupt()
+    If m_isOpen Then sqlite3_interrupt m_pDb
+End Sub
 
 '==============================================================================
 ' Query helper
