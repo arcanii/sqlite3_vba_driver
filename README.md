@@ -15,8 +15,8 @@ statements, vectorized bulk load, bulk insert, statement caching, and connection
 
 Versions
 =======
-0.1.1 - 11 March, 2026 - Added Performance benchmarks, and added comments for Security issues.
-0.1.0 - 9 March, 2026 - Initial Version (passed 122 tests) - my inaugural github check-in  
+0.1.1 - 11 March, 2026 - Added Performance benchmarks, and added comments for Security issues.<br/>
+0.1.0 - 9 March, 2026 - Initial Version (passed 122 tests) - my inaugural github check-in.<br/>  
 
 Releases Page
 =======
