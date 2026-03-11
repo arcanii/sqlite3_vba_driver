@@ -115,7 +115,7 @@ real-time scanning for that folder entirely.
 | `SQLite3_JSON.bas` | SQLite built-in JSON function wrappers (requires SQLite 3.38+) |
 | `SQLite3_Examples.bas` | Annotated usage examples for every feature |
 | `SQLite3_Tests.bas` | 240-test automated suite with QPC timing and failure summary |
-| `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded |
+| `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded. You just need this to try it out. |
 
 ---
 
