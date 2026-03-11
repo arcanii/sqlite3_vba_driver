@@ -38,7 +38,8 @@ Security Issues (important)
 1. Microsoft Excel has default security settings that slow down this driver 100x (it feels like the universe may end before the 240 tests can run).
 2. In Excel File->Options->Trust Center, click "Trust Center Settings..." button.
 3. Macro Settings tab: `Enable VBA Macros.`
-
+4. You may also need add the file location in the "Trusted Location" tab. Simply click the "Add new location..." button and add the directory location you want to trust to run macros.
+   
 There are 2 alternatives to doing this : (these may require administrative privileges)
 1. Option A: place `sqlite3.dll` in `C:\Windows\System32` (recommended, but it may not be allowed in your environment).
 No Defender scanning overhead, found by name alone.
