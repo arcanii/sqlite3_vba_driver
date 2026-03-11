@@ -1,10 +1,13 @@
 SQLite3 VBA Driver
 ==================
-A VBA SQLite3 "driver" so no registered COM objects, no third-party dependencies beyond the SQLite DLL itself. It is also very flexible to support a user defined 'sqlite3.dll' location.
+Skip down to TLDR section to get it working a.s.a.p. Please look at the Security section to make sure you don't hit a slowdown caused by Windows/Excel security settings.
 
-A SQLite3 driver for 64-bit Excel VBA (who uses 32-bit anymore?)
+**What is this?**<br/>
+This is a VBA SQLite3 "driver" so no registered COM objects, no third-party dependencies beyond the SQLite DLL itself. It is also very flexible to support a user defined 'sqlite3.dll' location.
+
+A SQLite3 driver for 64-bit Excel VBA (who uses 32-bit anymore?!)
 Uses `LoadLibrary` / `GetProcAddress` / `DispCallFunc` to call `sqlite3.dll` dynamically.
-no `Declare` statements pointing at SQLite, no registered COM objects, no third-party dependencies beyond the SQLite DLL itself.
+No `Declare` statements pointing at SQLite, no registered COM objects, no third-party dependencies beyond the SQLite DLL itself.
 Flexible deployment.
 
 Passes 122 automated tests (in the package) covering types, UTF-8, transactions, prepared
@@ -24,7 +27,7 @@ Security Issues (important)
 2. In Excel File->Options->Trust Center, click "Trust Center Settings..." button.
 3. Macro Settings tab: `Enable VBA Macros.`
 
-There are also 2 alternatives to doing this : (these may require administrative privledges)
+There are 2 alternatives to doing this : (these may require administrative privledges)
 1. Option A: place `sqlite3.dll` in `C:\Windows\System32` (recommended, but it may not be allowed in your environment).
 No Defender scanning overhead, found by name alone.
 2. Option B: explicit path outside System32 as the original, but you need to make sure your AV program has it excluded. Windows Defender example provided below.
@@ -46,16 +49,12 @@ TLDR Section (for those who want it to work fast)
 4. Put the sqlite3.dll in the directory you made in step 3 ("C:\sqlite\" if you want to avoid future work in step 7).
 5. Download the Excel file "Test-SQLite3-VBA-Driver.xlsm" from this GitHub repo, open it and turn on macros.
 6. Do a (`Alt+F11`) to open the Visual Basic editor. 
-7. ONLY if you changed "C:\sqlite\" to something else ... look for, and make changes 8-10 as below, if you made no changes in step 3, go right to 11.
-8. find the "SQQLite3_Tests.bas" in the 'Project - VBAProject' explorer window, at the top of the file look for the file locations.
-9. Change this to your DLL location: `Private Const DLL_PATH  As String = "C:\sqlite\sqlite3.dll"`.
-10. Change this to where you want the DB location: `Private Const DB_PATH   As String = "C:\sqlite\driver_test.db"`.
-11. In the 'Immediate window', type `RunAllTests` and hit enter. Reminder: to show the Immediate window do a (`Ctrl+G`).
-12. If everything is ok, the tests should run and produce a report (before the universe ends).
-
-
-
-
+7. ONLY if you changed "C:\sqlite\" to something else ... look for, and make changes changes as below, if you made no changes in step 3, skip right to 8.
+   - find the "SQQLite3_Tests.bas" in the 'Project - VBAProject' explorer window, at the top of the file look for the file locations.
+   - Change this to your DLL location: `Private Const DLL_PATH  As String = "C:\sqlite\sqlite3.dll"`. Note: if you are using the System32 option from security, it is just `"sqlite3.dll"`
+   - Change this to where you want the DB location: `Private Const DB_PATH   As String = "C:\sqlite\driver_test.db"`.
+8. In the 'Immediate window', type `RunAllTests` and hit enter. Reminder: to show the Immediate window do a (`Ctrl+G`).
+9. If everything is ok, the tests should run and produce a report (before the universe ends).
 
 ---
 
