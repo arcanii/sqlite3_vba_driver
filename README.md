@@ -121,7 +121,7 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 
 ---
 
-### New features
+### New modules
 
 - **`SQLite3_Logger.bas`** — Structured logging subsystem. Five levels: `LOG_DEBUG`,
   `LOG_INFO`, `LOG_WARN`, `LOG_ERROR`, `LOG_NONE`. Two sinks: Immediate window and
@@ -770,4 +770,5 @@ PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 
