@@ -3,11 +3,11 @@ SQLite3 VBA Driver
 Skip down to the TLDR section to get it working a.s.a.p. Please read the Security section — it explains a 100x slowdown that catches almost everyone the first time.
 
 **What is this?**<br/>
-A VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party
+A **very rich** VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party
 dependencies beyond the SQLite DLL itself. Every SQLite call goes through
 `DispCallFunc`, so the DLL path is configurable at runtime with no compile-time
-`Declare` statements.
-Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended.
+`Declare` statements. This tries to implement the full sqlite functionality set so you can use it in Excel (not tested with Word or Access, but I guess it should work)
+Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended in about 3 days (very impressive!)
 
 ---
 
@@ -275,28 +275,29 @@ Copy `sqlite3.dll` (64-bit) to a stable path. The recommended location is
 
 Open the Visual Basic Editor (`Alt+F11`), then for each file choose
 **File → Import File** (or drag-and-drop onto the Project Explorer):
-
+You only need the 7 core files, and the files for the features you want.
+To run all the tests, you need everything.
 ```
- 1.  SQLite3_API.bas           ← must be first
- 2.  SQLite3_API_Ext.bas
- 3.  SQLite3_Helpers.bas
+ 1.  SQLite3_API.bas           ← Core
+ 2.  SQLite3_API_Ext.bas       ← Core
+ 3.  SQLite3_Helpers.bas       ← Core
  4.  SQLite3_Schema.bas
  5.  SQLite3_Aggregates.bas
  6.  SQLite3_FTS5.bas
  7.  SQLite3_JSON.bas
- 8.  SQLite3Field.cls
- 9.  SQLite3Fields.cls
+ 8.  SQLite3Field.cls          ← Core
+ 9.  SQLite3Fields.cls         ← Core
 10.  SQLite3Command.cls
-11.  SQLite3Recordset.cls
-12.  SQLite3Connection.cls
+11.  SQLite3Recordset.cls      ← Core
+12.  SQLite3Connection.cls     ← Core
 13.  SQLite3BulkInsert.cls
 14.  SQLite3Pool.cls
 15.  SQLite3Backup.cls
 16.  SQLite3BlobStream.cls
 17.  SQLite3_Serialize.bas
 18.  SQLite3_Diagnostics.bas
-19.  SQLite3_Examples.bas      ← optional, for learning only
-20.  SQLite3_Tests.bas         ← optional, for testing only
+19.  SQLite3_Examples.bas      ← for learning
+20.  SQLite3_Tests.bas         ← for testing
 ```
 
 ### 3. Add the Scripting Runtime reference
@@ -769,3 +770,4 @@ PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
