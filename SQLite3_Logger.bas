@@ -33,10 +33,11 @@ Attribute VB_Name = "SQLite3_Logger"
 ' Output format:
 '   [2026-03-12 14:23:01.456] [DEBUG] [Source          ] Message
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.5 - Initial release.
+'   0.1.6 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

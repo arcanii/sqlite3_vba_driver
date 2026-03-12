@@ -20,7 +20,7 @@ Attribute VB_Name = "SQLite3_FTS5"
 '
 ' All functions here are pure SQL wrappers -- no extra DLL calls needed.
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.2 - Initial release. CreateFTS5Table, FTS5Insert, FTS5BulkInsert,
@@ -30,6 +30,7 @@ Attribute VB_Name = "SQLite3_FTS5"
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
+'   0.1.6 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

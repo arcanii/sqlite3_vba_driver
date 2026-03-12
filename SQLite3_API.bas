@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_API"
 ' Architecture : LoadLibrary / GetProcAddress / DispCallFunc
 ' Key point    : prgpvarg must be ByRef LongPtr (array of ptrs to Variants)
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.0 - Initial release. LoadLibrary/DispCallFunc loader, 28 proc cache,
@@ -24,6 +24,7 @@ Attribute VB_Name = "SQLite3_API"
 '            Added sqlite3_db_status, sqlite3_stmt_status.
 '            PROC_COUNT bumped from 31 to 47.
 '   0.1.5 - Added sqlite3_wal_checkpoint_v2 wrapper (P_WAL_CKPT=47).
+'   0.1.6 - No functional changes. Version stamp updated.
 '            Added SQLITE_OPEN_READONLY and SQLITE_CHECKPOINT_* constants.
 '            PROC_COUNT bumped from 47 to 48.
 '

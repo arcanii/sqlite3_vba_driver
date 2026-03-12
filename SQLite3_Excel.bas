@@ -21,10 +21,12 @@ Attribute VB_Name = "SQLite3_Excel"
 '   QueryToRange conn, "SELECT sym, price FROM prices ORDER BY price DESC", _
 '                Sheet2.Range("B2"), True
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.5 - Initial release.
+'   0.1.6 - Added ListObjectToTable: imports an Excel ListObject (Table) into
+'            SQLite using its own header metadata; thin wrapper over RangeToTable.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -161,6 +163,41 @@ Public Sub QueryToRange(ByVal conn As SQLite3Connection, _
         RecordsetToRange rs, topLeft, includeHeaders
     End If
     rs.CloseRecordset
+End Sub
+
+'==============================================================================
+' ListObjectToTable
+' Import an Excel ListObject (structured Table) into a SQLite table.
+'
+' This is a thin wrapper over RangeToTable that extracts the header row and
+' data body range from the ListObject directly, so callers do not need to
+' pass hasHeaders -- the answer is always True for a ListObject.
+'
+' Parameters:
+'   conn         - open SQLite3Connection
+'   tableName    - target SQLite table name (created if it does not exist)
+'   lo           - the source Excel ListObject (e.g. ActiveSheet.ListObjects(1))
+'   dropIfExists - True: DROP TABLE IF EXISTS before importing (default False)
+'   batchSize    - rows per transaction batch (default 10000)
+'
+' Usage:
+'   Dim lo As ListObject
+'   Set lo = Sheet1.ListObjects("PriceTable")
+'   ListObjectToTable conn, "prices", lo, dropIfExists:=True
+'==============================================================================
+Public Sub ListObjectToTable(ByVal conn As SQLite3Connection, _
+                              ByVal tableName As String, _
+                              ByVal lo As ListObject, _
+                              Optional ByVal dropIfExists As Boolean = False, _
+                              Optional ByVal batchSize As Long = 10000)
+
+    ' A ListObject with no data rows still has a header row; DataBodyRange
+    ' is Nothing when there are zero data rows -- guard against that.
+    If lo.ListRows.Count = 0 Then Exit Sub
+
+    ' Use the full range (headers + data) and tell RangeToTable headers=True.
+    ' lo.Range includes the header row; lo.DataBodyRange does not.
+    RangeToTable conn, tableName, lo.Range, True, dropIfExists, batchSize
 End Sub
 
 '==============================================================================

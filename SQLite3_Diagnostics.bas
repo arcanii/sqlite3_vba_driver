@@ -38,11 +38,12 @@ Attribute VB_Name = "SQLite3_Diagnostics"
 '   conn.ExecSQL "..."   ' or use the cmd
 '   Debug.Print "Full-scan steps: " & GetStmtStatus(pStmt, STMTSTAT_FULLSCAN, False)
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.4 - Initial release.
 '   0.1.5 - No functional changes. Version stamp updated.
+'   0.1.6 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

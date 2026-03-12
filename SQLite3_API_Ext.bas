@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_API_Ext"
 ' Holds a secondary handle copy so helper modules can call less-common
 ' SQLite3 functions without coupling to the private proc array in SQLite3_API.
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.0 - Initial release. Secondary DLL handle copy, SetDllHandle,
@@ -15,6 +15,7 @@ Attribute VB_Name = "SQLite3_API_Ext"
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
+'   0.1.6 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

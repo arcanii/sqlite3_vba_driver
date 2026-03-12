@@ -21,11 +21,12 @@ Attribute VB_Name = "SQLite3_Serialize"
 '   Set clone = InMemoryClone(conn)
 '   ' clone is now independent -- changes to conn do not affect it
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.4 - Initial release.
 '   0.1.5 - SerializeDB now auto-checkpoints the WAL (TRUNCATE mode) before
+'   0.1.6 - No functional changes. Version stamp updated.
 '            calling sqlite3_serialize. This folds outstanding WAL frames into
 '            the main file so the snapshot is always clean regardless of whether
 '            the source was opened in WAL mode. Errors from the checkpoint are

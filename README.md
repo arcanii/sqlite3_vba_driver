@@ -24,7 +24,7 @@ TLDR Section (for those who have no attention span)
    - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`
    - `Private Const LOG_PATH As String = "C:\sqlite\test_results.log"` (set to `""` to disable)
 8. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
-9. All 365 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
+9. All 415 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
 
 ---
 
@@ -32,6 +32,7 @@ Versions
 =======
 | Version | Date           | Tests | Pass | Highlights |
 |---------|----------------|-------|------|------------|
+| 0.1.6 | 12 March, 2026 |  415  |  415 | conn.Tag, ExecScriptFile, QueryColumn, ListObjectToTable, SQLite3_Migrate |
 | 0.1.5 | 12 March, 2026 |  365  |  365 | Excel integration, EXPLAIN QUERY PLAN, read-only connections, Checkpoint(), QPC LRU fix, SerializeDB auto-checkpoint, structured logging |
 | 0.1.4 | 12 March, 2026 |  305  |  305 | Online Backup API, incremental BLOB I/O, serialize/deserialize, diagnostics, file log output |
 | 0.1.3 | 11 March, 2026 |  240  |  240 | Schema introspection, savepoints, JSON functions, interrupt, failed-test summary |
@@ -73,9 +74,54 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 
 ---
 
-## What's New in 0.1.5
+## What's New in 0.1.6
 
-### New modules
+### New module
+
+- **`SQLite3_Migrate.bas`** — Schema versioning via SQLite's built-in `PRAGMA user_version`
+  (no extra table required). `GetSchemaVersion` / `SetSchemaVersion` for direct access.
+  `ApplyMigration(conn, toVersion, sql)` applies a single DDL/DML block inside a
+  transaction and advances the version only on success; skips silently if the DB is
+  already at or above `toVersion`. `MigrateAll(conn, steps)` applies an ordered array
+  of `MigrationStep` values and returns the count actually applied. Safe to call on
+  every workbook open — already-applied steps are no-ops.
+
+### SQLite3Connection.cls
+
+- **`Tag` property** — optional string label attached to a connection instance.
+  Included in every logger output line from that connection as
+  `[SQLite3Connection[<tag>]]`, making it straightforward to distinguish
+  connections in multi-connection workbook designs without changing any other API.
+- **`ExecScriptFile(filePath)`** — reads a UTF-8 `.sql` file and passes the entire
+  content to `sqlite3_exec` in one call. SQLite's exec handles multiple
+  semicolon-delimited statements and `--` / `/* */` comments natively, so no
+  client-side parsing is required. Useful for applying migration scripts, loading
+  seed data, and running schema dumps produced by external tools.
+
+### SQLite3_Helpers.bas
+
+- **`QueryColumn(conn, sql)`** — executes a query and returns the first column of
+  every result row as a zero-based `Variant()` array. Returns an empty array when
+  the query produces no rows. Eliminates the boilerplate of opening a recordset,
+  iterating rows, and closing — a pattern that appears constantly in practice.
+
+### SQLite3_Excel.bas
+
+- **`ListObjectToTable(conn, tableName, lo, dropIfExists, batchSize)`** — imports an
+  Excel `ListObject` (structured Table) into SQLite. Uses the ListObject's own header
+  row directly; callers do not supply `hasHeaders`. Guards against zero-row
+  ListObjects. Thin wrapper over `RangeToTable` — all type inference and bulk insert
+  logic is shared.
+
+### SQLite3_Tests.bas
+
+- 5 new test suites (39–43): `RunTest_Tag`, `RunTest_ExecScriptFile`,
+  `RunTest_QueryColumn`, `RunTest_ListObject`, `RunTest_Migrate`
+- Total: **415 / 415**
+
+---
+
+### New features
 
 - **`SQLite3_Logger.bas`** — Structured logging subsystem. Five levels: `LOG_DEBUG`,
   `LOG_INFO`, `LOG_WARN`, `LOG_ERROR`, `LOG_NONE`. Two sinks: Immediate window and
@@ -159,7 +205,11 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 | JSON functions | `JSONExtract`, `JSONSet`, `JSONPatch`, `JSONSearch`, `JSONGroupArray` and more |
 | FTS5 full-text search | Create, insert, search, snippet, highlight, BM25 ranking, optimize |
 | WAL mode | Enabled by default on `OpenDatabase`; skip with `enableWAL=False` |
-| Read-only connections | `openReadOnly=True` — `SQLITE_OPEN_READONLY`; writes raise `SQLITE_READONLY` |
+| Connection tagging | `conn.Tag` — label included in all log output; identifies connections in multi-connection workbooks |
+| Script file execution | `conn.ExecScriptFile(path)` — run a multi-statement UTF-8 `.sql` file in one call |
+| QueryColumn | `QueryColumn(conn, sql)` — first column of every result row as a flat `Variant()` array |
+| ListObject import | `ListObjectToTable` — import an Excel structured Table into SQLite directly |
+| Schema versioning | `SQLite3_Migrate`: `GetSchemaVersion`, `SetSchemaVersion`, `ApplyMigration`, `MigrateAll` |
 | WAL checkpoint | `conn.Checkpoint(mode)` — PASSIVE / FULL / RESTART / TRUNCATE |
 | Excel integration | `RangeToTable` (range→SQLite) and `QueryToRange` (SQL→worksheet) |
 | EXPLAIN QUERY PLAN | `GetQueryPlan(conn, sql)` returns plan nodes as a Variant matrix |
@@ -177,8 +227,8 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 |------|------|
 | `SQLite3_API.bas` | DLL loader, 48 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
 | `SQLite3_API_Ext.bas` | Auxiliary dispatch bridge; secondary DLL handle copy |
-| `SQLite3_Helpers.bas` | `QueryScalar`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange`, `GetQueryPlan` |
-| `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU cache (QPC), transactions, savepoints, interrupt, checkpoint, read-only mode |
+| `SQLite3_Helpers.bas` | `QueryScalar`, `QueryColumn`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange`, `GetQueryPlan` |
+| `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU cache (QPC), transactions, savepoints, interrupt, checkpoint, read-only mode, Tag, ExecScriptFile |
 | `SQLite3Recordset.cls` | Live and vectorized recordset, `GetRows()`, `ToMatrix()`, `rs!Field` |
 | `SQLite3Fields.cls` | Case-insensitive field collection, `For Each` enumerator |
 | `SQLite3Field.cls` | Zero-copy value reads; `Value`, `AsString`, `AsBytes`, `AsInt64` |
@@ -193,10 +243,11 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 | `SQLite3_Aggregates.bas` | SQL aggregate and window function helpers |
 | `SQLite3_FTS5.bas` | FTS5 full-text search helpers |
 | `SQLite3_JSON.bas` | SQLite built-in JSON function wrappers (requires SQLite 3.38+) |
-| `SQLite3_Excel.bas` | Excel integration — `RangeToTable`, `QueryToRange` |
+| `SQLite3_Excel.bas` | Excel integration — `RangeToTable`, `ListObjectToTable`, `QueryToRange` |
+| `SQLite3_Migrate.bas` | Schema versioning — `GetSchemaVersion`, `SetSchemaVersion`, `ApplyMigration`, `MigrateAll` |
 | `SQLite3_Logger.bas` | Structured logging — DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
 | `SQLite3_Examples.bas` | Annotated usage examples for every feature |
-| `SQLite3_Tests.bas` | 365-test automated suite with QPC timing, file logging, and failure summary |
+| `SQLite3_Tests.bas` | 415-test automated suite with QPC timing, file logging, and failure summary |
 | `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded |
 
 ---

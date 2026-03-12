@@ -12,7 +12,7 @@ Attribute VB_Exposed = False
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
@@ -30,6 +30,11 @@ Attribute VB_Exposed = False
 '            Integrated SQLite3_Logger: key events emitted at DEBUG/INFO/WARN/
 '            ERROR level. Logger calls are zero-cost when logger is unconfigured
 '            or the event level is below the current threshold.
+'   0.1.6 - Added Tag property: optional label included in all logger output,
+'            useful for identifying connections in multi-connection workbooks.
+'            Added ExecScriptFile(path): reads a .sql file and passes the entire
+'            content to sqlite3_exec, which handles multiple semicolon-delimited
+'            statements and SQL comments natively.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -63,13 +68,11 @@ End Type
 
 Private Const STMT_CACHE_SIZE As Long = 64
 
-' Log-source tag used for all Logger_* calls from this class
-Private Const LOG_SRC As String = "SQLite3Connection"
-
 ' -- Instance state -----------------------------------------------------------
 Private m_pDb            As LongPtr
 Private m_dllPath        As String
 Private m_dbPath         As String
+Private m_tag            As String     ' optional label shown in all log output
 Private m_busyMs         As Long
 Private m_inTx           As Boolean
 Private m_isReadOnly     As Boolean
@@ -78,6 +81,19 @@ Private m_cache()        As StmtCacheEntry
 Private m_cacheCount     As Long
 Private m_lastError      As String
 Private m_isOpen         As Boolean
+
+'==============================================================================
+' LogSrc -- dynamic log-source tag
+' Returns "SQLite3Connection[<tag>]" when Tag is set, else "SQLite3Connection".
+' Used as the source argument in every Logger_* call in this class.
+'==============================================================================
+Private Function LogSrc() As String
+    If Len(m_tag) > 0 Then
+        LogSrc = "SQLite3Connection[" & m_tag & "]"
+    Else
+        LogSrc = "SQLite3Connection"
+    End If
+End Function
 
 '==============================================================================
 ' QPC helper -- monotonic tick count as LongLong
@@ -154,7 +170,7 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
     ExecSQL "PRAGMA temp_store=MEMORY;"
     If Not openReadOnly Then ExecSQL "PRAGMA locking_mode=NORMAL;"
 
-    Logger_Info LOG_SRC, "Opened " & IIf(openReadOnly, "[READ-ONLY] ", "") & _
+    Logger_Info LogSrc(), "Opened " & IIf(openReadOnly, "[READ-ONLY] ", "") & _
                           "db=" & dbPath
 End Sub
 
@@ -174,7 +190,7 @@ Public Sub CloseConnection()
         sqlite3_close m_pDb
         m_pDb = 0
     End If
-    Logger_Info LOG_SRC, "Closed db=" & m_dbPath
+    Logger_Info LogSrc(), "Closed db=" & m_dbPath
 End Sub
 
 '==============================================================================
@@ -186,6 +202,14 @@ End Property
 
 Public Property Get IsReadOnly() As Boolean
     IsReadOnly = m_isReadOnly
+End Property
+
+Public Property Get Tag() As String
+    Tag = m_tag
+End Property
+
+Public Property Let Tag(ByVal value As String)
+    m_tag = value
 End Property
 
 Public Property Get Handle() As LongPtr
@@ -220,7 +244,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
             sqlite3_reset m_cache(i).hStmt
             sqlite3_clear_bindings m_cache(i).hStmt
             If Logger_IsEnabled(LOG_DEBUG) Then
-                Logger_Debug LOG_SRC, "Cache HIT  slot=" & i & _
+                Logger_Debug LogSrc(), "Cache HIT  slot=" & i & _
                              " sql=" & Left(sql, 80)
             End If
             GetCachedStatement = m_cache(i).hStmt
@@ -248,7 +272,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
         sqlite3_finalize m_cache(oldest).hStmt
         slot = oldest
         If Logger_IsEnabled(LOG_DEBUG) Then
-            Logger_Debug LOG_SRC, "Cache EVICT slot=" & slot & _
+            Logger_Debug LogSrc(), "Cache EVICT slot=" & slot & _
                          " evicted=" & Left(m_cache(slot).sqlText, 60)
         End If
     End If
@@ -258,7 +282,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
     m_cache(slot).lastUsed = TickNow()
 
     If Logger_IsEnabled(LOG_DEBUG) Then
-        Logger_Debug LOG_SRC, "Cache MISS slot=" & slot & _
+        Logger_Debug LogSrc(), "Cache MISS slot=" & slot & _
                      " sql=" & Left(sql, 80)
     End If
     GetCachedStatement = pStmt
@@ -277,7 +301,49 @@ Private Sub ClearStatementCache()
         End If
     Next i
     m_cacheCount = 0
-    Logger_Debug LOG_SRC, "Statement cache cleared"
+    Logger_Debug LogSrc(), "Statement cache cleared"
+End Sub
+
+'==============================================================================
+' ExecScriptFile  -  execute a .sql file containing one or more statements
+'
+' Reads the entire file at filePath and passes it to sqlite3_exec in one call.
+' sqlite3_exec handles multiple semicolon-delimited statements and SQL comments
+' (-- and /* */) natively, so no client-side parsing is needed.
+'
+' The file must be UTF-8 encoded (SQLite's native encoding). Windows ANSI and
+' UTF-16 files will import incorrectly -- convert before calling if needed.
+'==============================================================================
+Public Sub ExecScriptFile(ByVal filePath As String)
+    AssertOpen
+
+    ' Read the file into a string
+    Dim fNum As Integer: fNum = FreeFile
+    Dim script As String
+    Open filePath For Input As #fNum
+    Dim line As String
+    Do While Not EOF(fNum)
+        Line Input #fNum, line
+        script = script & line & vbLf
+    Loop
+    Close #fNum
+
+    If Len(Trim(script)) = 0 Then Exit Sub
+
+    ' Pass the whole script to sqlite3_exec -- it handles multiple statements
+    Dim sqlBytes() As Byte: sqlBytes = SQLite3_API.ToUTF8(script)
+    Dim pErr As LongPtr
+    Dim rc As Long
+    rc = sqlite3_exec(m_pDb, VarPtr(sqlBytes(0)), CLngPtr(0), CLngPtr(0), pErr)
+    If rc <> SQLITE_OK Then
+        m_lastError = sqlite3_errmsg_str(m_pDb)
+        Logger_Error LogSrc(), "ExecScriptFile rc=" & rc & _
+                               " file=" & filePath & " err=" & m_lastError
+        Err.Raise vbObjectError + 100, "SQLite3Connection.ExecScriptFile", _
+                  "SQLite error " & rc & ": " & m_lastError & " - File: " & filePath
+    End If
+
+    Logger_Info LogSrc(), "ExecScriptFile OK file=" & filePath
 End Sub
 
 '==============================================================================
@@ -292,7 +358,7 @@ Public Sub ExecSQL(ByVal sql As String)
     rc = sqlite3_exec(m_pDb, VarPtr(sqlBytes(0)), CLngPtr(0), CLngPtr(0), pErr)
     If rc <> SQLITE_OK Then
         m_lastError = sqlite3_errmsg_str(m_pDb)
-        Logger_Error LOG_SRC, "ExecSQL rc=" & rc & " err=" & m_lastError & _
+        Logger_Error LogSrc(), "ExecSQL rc=" & rc & " err=" & m_lastError & _
                                " sql=" & sql
         Err.Raise vbObjectError + 100, "SQLite3Connection.ExecSQL", _
                   "SQLite error " & rc & ": " & m_lastError & " - SQL: " & sql
@@ -305,19 +371,19 @@ End Sub
 Public Sub BeginTransaction()
     ExecSQL "BEGIN;"
     m_inTx = True
-    Logger_Debug LOG_SRC, "BEGIN"
+    Logger_Debug LogSrc(), "BEGIN"
 End Sub
 
 Public Sub BeginImmediate()
     ExecSQL "BEGIN IMMEDIATE;"
     m_inTx = True
-    Logger_Debug LOG_SRC, "BEGIN IMMEDIATE"
+    Logger_Debug LogSrc(), "BEGIN IMMEDIATE"
 End Sub
 
 Public Sub CommitTransaction()
     ExecSQL "COMMIT;"
     m_inTx = False
-    Logger_Debug LOG_SRC, "COMMIT"
+    Logger_Debug LogSrc(), "COMMIT"
 End Sub
 
 Public Sub RollbackTransaction()
@@ -325,7 +391,7 @@ Public Sub RollbackTransaction()
     ExecSQL "ROLLBACK;"
     m_inTx = False
     On Error GoTo 0
-    Logger_Warn LOG_SRC, "ROLLBACK"
+    Logger_Warn LogSrc(), "ROLLBACK"
 End Sub
 
 '==============================================================================
@@ -335,20 +401,20 @@ Public Sub Savepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "SAVEPOINT [" & spName & "];"
     m_savepointDepth = m_savepointDepth + 1
-    Logger_Debug LOG_SRC, "SAVEPOINT [" & spName & "] depth=" & m_savepointDepth
+    Logger_Debug LogSrc(), "SAVEPOINT [" & spName & "] depth=" & m_savepointDepth
 End Sub
 
 Public Sub ReleaseSavepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "RELEASE SAVEPOINT [" & spName & "];"
     If m_savepointDepth > 0 Then m_savepointDepth = m_savepointDepth - 1
-    Logger_Debug LOG_SRC, "RELEASE [" & spName & "] depth=" & m_savepointDepth
+    Logger_Debug LogSrc(), "RELEASE [" & spName & "] depth=" & m_savepointDepth
 End Sub
 
 Public Sub RollbackToSavepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "ROLLBACK TO SAVEPOINT [" & spName & "];"
-    Logger_Warn LOG_SRC, "ROLLBACK TO SAVEPOINT [" & spName & "]"
+    Logger_Warn LogSrc(), "ROLLBACK TO SAVEPOINT [" & spName & "]"
 End Sub
 
 '==============================================================================
@@ -357,7 +423,7 @@ End Sub
 Public Sub Interrupt()
     If m_isOpen Then
         sqlite3_interrupt m_pDb
-        Logger_Warn LOG_SRC, "sqlite3_interrupt signalled"
+        Logger_Warn LogSrc(), "sqlite3_interrupt signalled"
     End If
 End Sub
 
@@ -383,13 +449,13 @@ Public Function Checkpoint(Optional ByVal mode As String = "PASSIVE", _
 
     If rc <> SQLITE_OK And rc <> SQLITE_BUSY Then
         m_lastError = sqlite3_errmsg_str(m_pDb)
-        Logger_Error LOG_SRC, "Checkpoint(" & mode & ") rc=" & rc & _
+        Logger_Error LogSrc(), "Checkpoint(" & mode & ") rc=" & rc & _
                                " err=" & m_lastError
         Err.Raise vbObjectError + 110, "SQLite3Connection.Checkpoint", _
                   "sqlite3_wal_checkpoint_v2 failed (rc=" & rc & "): " & m_lastError
     End If
 
-    Logger_Info LOG_SRC, "Checkpoint(" & mode & ") pagesWritten=" & nLog & _
+    Logger_Info LogSrc(), "Checkpoint(" & mode & ") pagesWritten=" & nLog & _
                           " pagesRemaining=" & nCkpt & _
                           IIf(rc = SQLITE_BUSY, " [BUSY]", "")
     Checkpoint = Array(nLog, nCkpt)
@@ -438,7 +504,7 @@ End Sub
 Private Sub CheckRC(ByVal rc As Long, ByVal context As String)
     If rc <> SQLITE_OK Then
         m_lastError = sqlite3_errmsg_str(m_pDb)
-        Logger_Error LOG_SRC, context & " rc=" & rc & " err=" & m_lastError
+        Logger_Error LogSrc(), context & " rc=" & rc & " err=" & m_lastError
         Err.Raise vbObjectError + 100, "SQLite3Connection." & context, _
                   "SQLite error " & rc & ": " & m_lastError
     End If

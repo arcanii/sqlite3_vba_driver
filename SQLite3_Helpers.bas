@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_Helpers"
 ' No Declare needed here: CopyMemoryByte lives in SQLite3_API.bas,
 ' and all SQLite wrappers are in SQLite3_API.bas.
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.0 - Initial release. QueryScalar, TableExists, TableRowCount,
@@ -14,6 +14,8 @@ Attribute VB_Name = "SQLite3_Helpers"
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - Added GetQueryPlan -- EXPLAIN QUERY PLAN wrapper returning a matrix.
+'   0.1.6 - Added QueryColumn -- return the first column of every result row as
+'            a Variant array. Common pattern that previously required a full rs.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -118,6 +120,65 @@ Private Function SchemaObjectExists(ByVal conn As SQLite3Connection, _
                           "WHERE type='" & objType & "' AND name='" & _
                           Replace(objName, "'", "''") & "';")
     SchemaObjectExists = (Not IsNull(v)) And (CLng(v) > 0)
+End Function
+
+'==============================================================================
+' GetQueryPlan
+' Run EXPLAIN QUERY PLAN on sql and return the result as a Variant matrix.
+'
+' Returns a (nNodes x 4) matrix with columns:
+'   (col 0) id        INTEGER  - node id within the plan
+'   (col 1) parent    INTEGER  - parent node id (0 = root)
+'   (col 2) notused   INTEGER  - always 0 in current SQLite
+'   (col 3) detail    TEXT     - human-readable description of the plan step
+'
+' Returns Empty if the query produces no plan nodes (DDL statements, etc.).
+'
+' Usage:
+'   Dim plan As Variant
+'   plan = GetQueryPlan(conn, "SELECT * FROM orders WHERE customer_id = 42")
+'   Dim i As Long
+'   For i = 0 To UBound(plan, 1)
+'       Debug.Print plan(i, 3)   ' detail column
+'   Next i
+'==============================================================================
+'==============================================================================
+' QueryColumn
+' Execute sql against conn and return the first column of every row as a
+' zero-based Variant array.  Returns an empty array (UBound = -1) when the
+' query produces no rows.
+'
+' Usage:
+'   Dim syms() As Variant
+'   syms = QueryColumn(conn, "SELECT symbol FROM prices ORDER BY symbol")
+'   Dim i As Long
+'   For i = 0 To UBound(syms)
+'       Debug.Print syms(i)
+'   Next i
+'==============================================================================
+Public Function QueryColumn(ByVal conn As SQLite3Connection, _
+                             ByVal sql As String) As Variant
+    Dim rs As New SQLite3Recordset
+    rs.OpenInternal conn, sql
+    rs.LoadAll
+
+    If rs.RecordCount = 0 Then
+        QueryColumn = Array()
+        rs.CloseRecordset
+        Exit Function
+    End If
+
+    Dim mat As Variant: mat = rs.ToMatrix
+    rs.CloseRecordset
+
+    Dim nRows As Long: nRows = UBound(mat, 1) - LBound(mat, 1) + 1
+    Dim result() As Variant
+    ReDim result(nRows - 1)
+    Dim i As Long
+    For i = 0 To nRows - 1
+        result(i) = mat(LBound(mat, 1) + i, LBound(mat, 2))
+    Next i
+    QueryColumn = result
 End Function
 
 '==============================================================================

@@ -3,7 +3,7 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
-' Version : 0.1.5
+' Version : 0.1.6
 '
 ' Version History:
 '   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
@@ -17,6 +17,8 @@ Attribute VB_Name = "SQLite3_Examples"
 '            Example_Diagnostics. Added all four to TestAll().
 '   0.1.5 - Added Example_ReadOnly, Example_Checkpoint, Example_QueryPlan,
 '            Example_Excel, Example_Logger. Added all five to TestAll().
+'   0.1.6 - Added Example_Tag, Example_ExecScriptFile, Example_QueryColumn,
+'            Example_Migrate. Added all four to TestAll().
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -299,6 +301,10 @@ Public Sub TestAll()
     Example_QueryPlan
     Example_Excel
     Example_Logger
+    Example_Tag
+    Example_ExecScriptFile
+    Example_QueryColumn
+    Example_Migrate
     Debug.Print String(60, "=")
     Debug.Print "All tests passed."
     Exit Sub
@@ -777,4 +783,127 @@ Public Sub Diagnose()
     Debug.Print ""
     Debug.Print "All diagnostic steps passed."
     Debug.Print String(60, "=")
+End Sub
+
+'==============================================================================
+' Example 17: conn.Tag  (connection labelling for multi-connection workbooks)
+'==============================================================================
+Public Sub Example_Tag()
+    Logger_Configure LOG_INFO, True, False, ""
+
+    Dim primary As New SQLite3Connection
+    primary.Tag = "primary"
+    primary.OpenDatabase DB_PATH, DLL_PATH
+
+    Dim secondary As New SQLite3Connection
+    secondary.Tag = "secondary"
+    secondary.OpenDatabase DB_PATH, DLL_PATH
+
+    ' Both connections share the same physical file; Tag distinguishes log lines.
+    primary.ExecSQL "SELECT 1;"           ' log: [SQLite3Connection[primary]]
+    secondary.ExecSQL "SELECT 2;"         ' log: [SQLite3Connection[secondary]]
+
+    Debug.Print "primary.Tag   = " & primary.Tag
+    Debug.Print "secondary.Tag = " & secondary.Tag
+
+    primary.CloseConnection
+    secondary.CloseConnection
+    Debug.Print "Example_Tag complete."
+End Sub
+
+'==============================================================================
+' Example 18: conn.ExecScriptFile  (run a multi-statement .sql migration file)
+'==============================================================================
+Public Sub Example_ExecScriptFile()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    Dim scriptPath As String
+    scriptPath = Environ("TEMP") & "\example_setup.sql"
+    Dim fNum As Integer: fNum = FreeFile
+    Open scriptPath For Output As #fNum
+    Print #fNum, "-- Example setup script"
+    Print #fNum, "CREATE TABLE IF NOT EXISTS products ("
+    Print #fNum, "    id    INTEGER PRIMARY KEY,"
+    Print #fNum, "    name  TEXT NOT NULL,"
+    Print #fNum, "    price REAL"
+    Print #fNum, ");"
+    Print #fNum, "INSERT OR IGNORE INTO products VALUES (1, 'Widget A', 9.99);"
+    Print #fNum, "INSERT OR IGNORE INTO products VALUES (2, 'Widget B', 14.99);"
+    Print #fNum, "INSERT OR IGNORE INTO products VALUES (3, 'Widget C', 4.99);"
+    Close #fNum
+
+    conn.ExecScriptFile scriptPath
+
+    Dim v As Variant
+    v = QueryScalar(conn, "SELECT COUNT(*) FROM products;")
+    Debug.Print "Products imported: " & v
+
+    conn.ExecSQL "DROP TABLE IF EXISTS products;"
+    conn.CloseConnection
+    Debug.Print "Example_ExecScriptFile complete."
+End Sub
+
+'==============================================================================
+' Example 19: QueryColumn  (get a single column as a flat Variant array)
+'==============================================================================
+Public Sub Example_QueryColumn()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    conn.ExecSQL "CREATE TABLE IF NOT EXISTS sectors (name TEXT);"
+    conn.ExecSQL "DELETE FROM sectors;"
+    conn.ExecSQL "INSERT INTO sectors VALUES ('Technology');"
+    conn.ExecSQL "INSERT INTO sectors VALUES ('Financials');"
+    conn.ExecSQL "INSERT INTO sectors VALUES ('Healthcare');"
+    conn.ExecSQL "INSERT INTO sectors VALUES ('Energy');"
+
+    Dim names As Variant
+    names = QueryColumn(conn, "SELECT name FROM sectors ORDER BY name;")
+
+    Debug.Print "Sectors (" & (UBound(names) - LBound(names) + 1) & "):"
+    Dim i As Long
+    For i = LBound(names) To UBound(names)
+        Debug.Print "  " & names(i)
+    Next i
+
+    conn.ExecSQL "DROP TABLE IF EXISTS sectors;"
+    conn.CloseConnection
+    Debug.Print "Example_QueryColumn complete."
+End Sub
+
+'==============================================================================
+' Example 20: SQLite3_Migrate  (schema versioning with PRAGMA user_version)
+'==============================================================================
+Public Sub Example_Migrate()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    SetSchemaVersion conn, 0
+    conn.ExecSQL "DROP TABLE IF EXISTS accounts;"
+    conn.ExecSQL "DROP TABLE IF EXISTS trades;"
+
+    Debug.Print "Schema version before: " & GetSchemaVersion(conn)
+
+    Dim steps(1) As MigrationStep
+    steps(0) = MakeStep(1, _
+        "CREATE TABLE IF NOT EXISTS accounts " & _
+        "(id INTEGER PRIMARY KEY, name TEXT NOT NULL);")
+    steps(1) = MakeStep(2, _
+        "CREATE TABLE IF NOT EXISTS trades " & _
+        "(id INTEGER PRIMARY KEY, acct_id INTEGER, qty REAL, ts TEXT);")
+
+    Dim n As Long
+    n = MigrateAll(conn, steps)
+    Debug.Print "Migrations applied: " & n
+    Debug.Print "Schema version after: " & GetSchemaVersion(conn)
+
+    n = MigrateAll(conn, steps)
+    Debug.Print "Re-run applied: " & n & " (expected 0)"
+
+    conn.ExecSQL "DROP TABLE IF EXISTS accounts;"
+    conn.ExecSQL "DROP TABLE IF EXISTS trades;"
+    SetSchemaVersion conn, 0
+    conn.CloseConnection
+    Debug.Print "Example_Migrate complete."
 End Sub
