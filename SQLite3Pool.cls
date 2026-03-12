@@ -25,7 +25,7 @@ Attribute VB_Exposed = False
 '   ' ... use conn ...
 '   pool.ReleaseConnection conn
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. LRU idle reaping, auto-rollback on release,
@@ -37,6 +37,7 @@ Attribute VB_Exposed = False
 '   0.1.2 - No functional changes. Version stamp updated.
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
+'   0.1.5 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

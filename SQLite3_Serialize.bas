@@ -21,10 +21,15 @@ Attribute VB_Name = "SQLite3_Serialize"
 '   Set clone = InMemoryClone(conn)
 '   ' clone is now independent -- changes to conn do not affect it
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.4 - Initial release.
+'   0.1.5 - SerializeDB now auto-checkpoints the WAL (TRUNCATE mode) before
+'            calling sqlite3_serialize. This folds outstanding WAL frames into
+'            the main file so the snapshot is always clean regardless of whether
+'            the source was opened in WAL mode. Errors from the checkpoint are
+'            silently ignored (non-WAL databases return SQLITE_OK immediately).
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -62,6 +67,17 @@ Public Const SQLITE_DESERIALIZE_RESIZEABLE  As Long = 2  ' allow the in-memory D
 '==============================================================================
 Public Function SerializeDB(ByVal conn As SQLite3Connection, _
                               Optional ByVal schema As String = "main") As Byte()
+    ' Checkpoint with TRUNCATE before serializing.
+    ' If the source is in WAL mode, outstanding WAL frames live in a separate
+    ' file and are NOT captured by sqlite3_serialize unless they have been
+    ' flushed into the main file first.  TRUNCATE folds all frames in and
+    ' resets the WAL to zero bytes.  On non-WAL databases this is a no-op that
+    ' returns SQLITE_OK immediately.  Errors are ignored: a failed checkpoint
+    ' (e.g. SQLITE_BUSY) still produces a valid -- if slightly stale -- snapshot.
+    Dim schCk() As Byte: schCk = SQLite3_API.ToUTF8(schema)
+    SQLite3_API.sqlite3_wal_checkpoint_v2 conn.Handle, VarPtr(schCk(0)), _
+        SQLITE_CHECKPOINT_TRUNCATE, CLngPtr(0), CLngPtr(0)
+
     Dim schBytes() As Byte: schBytes = SQLite3_API.ToUTF8(schema)
 
     Dim szDb As LongLong   ' sqlite3_serialize writes the size here

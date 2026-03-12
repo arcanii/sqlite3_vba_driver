@@ -8,7 +8,7 @@ Attribute VB_Name = "SQLite3_Tests"
 ' Output goes to the Immediate window (Ctrl+G).
 ' Each test prints PASS or FAIL with details on failure.
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. 122 tests across 22 suites.
@@ -28,6 +28,9 @@ Attribute VB_Name = "SQLite3_Tests"
 '            first Step call (sqlite3_backup_remaining=0 before first step);
 '            BackupToFile copied zero pages and produced an empty file.
 '            Total: 305 tests across 33 suites.
+'   0.1.5 - Added RunTest_ReadOnly (34), RunTest_Checkpoint (35),
+'            RunTest_QueryPlan (36), RunTest_Excel (37), RunTest_Logger (38).
+'            Total: 365 tests across 38 suites.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -247,6 +250,11 @@ Public Sub RunAllTests()
     RunTest_BlobStream
     RunTest_Serialize
     RunTest_Diagnostics
+    RunTest_ReadOnly
+    RunTest_Checkpoint
+    RunTest_QueryPlan
+    RunTest_Excel
+    RunTest_Logger
 
     Dim totalTime As String: totalTime = ElapsedMs(m_runStart, QPC())
     Log ""
@@ -2058,6 +2066,338 @@ Public Sub RunTest_Diagnostics()
 
     DropTable conn, "t_diag"
     conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 34. Read-only connections
+'==============================================================================
+Public Sub RunTest_ReadOnly()
+    StartSuite "ReadOnly"
+    On Error Resume Next
+
+    ' Seed the file with a known table using a normal read-write connection
+    Dim rw As SQLite3Connection: Set rw = FreshConn()
+    DropTable rw, "t_ro"
+    rw.ExecSQL "CREATE TABLE t_ro (id INTEGER PRIMARY KEY, val TEXT);"
+    rw.BeginTransaction
+    Dim i As Long
+    For i = 1 To 50
+        rw.ExecSQL "INSERT INTO t_ro VALUES (" & i & ", 'r" & i & "');"
+    Next i
+    rw.CommitTransaction
+    AssertEqual "Seed row count", TableRowCount(rw, "t_ro"), 50
+    rw.CloseConnection
+
+    ' Open the same file read-only
+    Dim ro As New SQLite3Connection
+    ro.OpenDatabase DB_PATH, DLL_PATH, 5000, False, 0, True  ' openReadOnly=True
+    AssertNoError "Open read-only"
+    AssertTrue  "IsReadOnly = True",  ro.IsReadOnly
+    AssertEqual "Read-only row count", TableRowCount(ro, "t_ro"), 50
+
+    Dim v As Variant
+    v = QueryScalar(ro, "SELECT val FROM t_ro WHERE id=25;")
+    AssertEqual "Read-only scalar read", CStr(v), "r25"
+
+    ' Writes must fail on a read-only connection
+    Err.Clear
+    ro.ExecSQL "INSERT INTO t_ro VALUES (999, 'x');"
+    AssertTrue "Write raises error on read-only", Err.Number <> 0
+    Err.Clear
+
+    ' Row count must be unchanged after failed write
+    AssertEqual "Row count unchanged after failed write", TableRowCount(ro, "t_ro"), 50
+
+    ro.CloseConnection
+
+    ' A freshly opened read-write connection must not be flagged as read-only
+    Dim rw2 As SQLite3Connection: Set rw2 = FreshConn()
+    AssertFalse "IsReadOnly = False for rw conn", rw2.IsReadOnly
+    DropTable rw2, "t_ro"
+    rw2.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 35. WAL Checkpoint
+'==============================================================================
+Public Sub RunTest_Checkpoint()
+    StartSuite "Checkpoint"
+    On Error Resume Next
+
+    ' Use a dedicated WAL file to ensure a non-trivial WAL state
+    Dim ckPath As String
+    ckPath = Left(DB_PATH, Len(DB_PATH) - 3) & "_ck.db"
+    Kill ckPath:          Err.Clear
+    Kill ckPath & "-wal": Err.Clear
+    Kill ckPath & "-shm": Err.Clear
+
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase ckPath, DLL_PATH, 5000, True   ' WAL mode
+    AssertNoError "Open checkpoint test DB"
+    conn.ExecSQL "CREATE TABLE t_ck (id INTEGER PRIMARY KEY, val REAL);"
+    conn.BeginTransaction
+    Dim i As Long
+    For i = 1 To 1000
+        conn.ExecSQL "INSERT INTO t_ck VALUES (" & i & ", " & (i * 1.5) & ");"
+    Next i
+    conn.CommitTransaction
+    AssertEqual "Rows before checkpoint", TableRowCount(conn, "t_ck"), 1000
+
+    ' PASSIVE checkpoint -- should succeed, return numeric array
+    Dim ck As Variant
+    ck = conn.Checkpoint("PASSIVE")
+    AssertNoError "PASSIVE checkpoint no error"
+    AssertTrue "Checkpoint returns array", IsArray(ck)
+    AssertTrue "Checkpoint(0) pagesWritten >= 0", CLng(ck(0)) >= 0
+    AssertTrue "Checkpoint(1) pagesRemaining >= 0", CLng(ck(1)) >= 0
+    Log "    INFO  PASSIVE: pagesWritten=" & ck(0) & "  pagesRemaining=" & ck(1)
+
+    ' TRUNCATE checkpoint -- WAL file should be reset to zero after this
+    Dim ck2 As Variant
+    ck2 = conn.Checkpoint("TRUNCATE")
+    AssertNoError "TRUNCATE checkpoint no error"
+    AssertTrue "TRUNCATE pagesRemaining = 0", CLng(ck2(1)) = 0
+    Log "    INFO  TRUNCATE: pagesWritten=" & ck2(0) & "  pagesRemaining=" & ck2(1)
+
+    ' Data must still be intact after checkpoint
+    AssertEqual "Rows after checkpoint", TableRowCount(conn, "t_ck"), 1000
+
+    conn.CloseConnection
+    Kill ckPath:          Err.Clear
+    Kill ckPath & "-wal": Err.Clear
+    Kill ckPath & "-shm": Err.Clear
+    EndSuite
+End Sub
+
+'==============================================================================
+' 36. EXPLAIN QUERY PLAN helper
+'==============================================================================
+Public Sub RunTest_QueryPlan()
+    StartSuite "QueryPlan"
+    On Error Resume Next
+
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_qp"
+    conn.ExecSQL "CREATE TABLE t_qp (id INTEGER PRIMARY KEY, val TEXT, score REAL);"
+    conn.ExecSQL "CREATE INDEX idx_qp_score ON t_qp(score);"
+
+    ' Full-table scan plan (no WHERE or all rows)
+    Dim plan As Variant
+    plan = GetQueryPlan(conn, "SELECT * FROM t_qp;")
+    AssertNoError "GetQueryPlan no error"
+    AssertTrue  "Plan is array", IsArray(plan)
+    AssertTrue  "Plan has at least 1 row", UBound(plan, 1) >= 0
+    AssertEqual "Plan has 4 columns", UBound(plan, 2) + 1, 4
+
+    ' Detail column (col 3) should mention the table
+    Dim detail As String: detail = CStr(plan(0, 3))
+    AssertTrue "Plan detail mentions t_qp", InStr(1, detail, "t_qp", vbTextCompare) > 0
+    Log "    INFO  plan(0,3)=" & detail
+
+    ' Index scan plan
+    Dim planIdx As Variant
+    planIdx = GetQueryPlan(conn, "SELECT val FROM t_qp WHERE score > 5.0;")
+    AssertNoError "GetQueryPlan with index no error"
+    AssertTrue "Index plan has rows", IsArray(planIdx) And UBound(planIdx, 1) >= 0
+    Dim detailIdx As String: detailIdx = CStr(planIdx(0, 3))
+    Log "    INFO  index plan(0,3)=" & detailIdx
+    ' The plan should reference the index or the table
+    AssertTrue "Index plan detail non-empty", Len(detailIdx) > 0
+
+    DropTable conn, "t_qp"
+    conn.CloseConnection
+    EndSuite
+End Sub
+
+'==============================================================================
+' 37. SQLite3_Excel integration
+'==============================================================================
+Public Sub RunTest_Excel()
+    StartSuite "Excel"
+    On Error Resume Next
+
+    ' Build a temp worksheet with test data
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets.Add
+    AssertNoError "Add temp worksheet"
+    If Err.Number <> 0 Then
+        Log "    INFO  Skipping Excel tests -- could not add worksheet"
+        EndSuite
+        Exit Sub
+    End If
+    Err.Clear
+
+    ' Write headers + data (5 columns, 10 data rows)
+    ws.Cells(1, 1) = "id"
+    ws.Cells(1, 2) = "sym"
+    ws.Cells(1, 3) = "price"
+    ws.Cells(1, 4) = "qty"
+    ws.Cells(1, 5) = "active"
+
+    Dim i As Long
+    For i = 1 To 10
+        ws.Cells(i + 1, 1) = i
+        ws.Cells(i + 1, 2) = "SYM" & i
+        ws.Cells(i + 1, 3) = 100# + i * 0.5
+        ws.Cells(i + 1, 4) = i * 10
+        ws.Cells(i + 1, 5) = IIf(i Mod 2 = 0, True, False)
+    Next i
+
+    Dim srcRange As Range
+    Set srcRange = ws.Range(ws.Cells(1, 1), ws.Cells(11, 5))   ' 1 header + 10 data rows
+
+    ' ---- RangeToTable -------------------------------------------------------
+    Dim conn As SQLite3Connection: Set conn = FreshConn()
+    DropTable conn, "t_excel"
+    RangeToTable conn, "t_excel", srcRange, True, True
+    AssertNoError "RangeToTable no error"
+    AssertEqual "RangeToTable row count", TableRowCount(conn, "t_excel"), 10
+
+    ' Verify a text value
+    Dim vSym As Variant
+    vSym = QueryScalar(conn, "SELECT sym FROM t_excel WHERE id=3;")
+    AssertEqual "Text column correct", CStr(vSym), "SYM3"
+
+    ' Verify a numeric value
+    Dim vPrice As Variant
+    vPrice = QueryScalar(conn, "SELECT price FROM t_excel WHERE id=1;")
+    AssertTrue "Numeric column correct", Abs(CDbl(vPrice) - 100.5) < 0.001
+
+    ' Verify column count from schema
+    Dim cols As Variant
+    cols = GetColumnInfo(conn, "t_excel")
+    AssertEqual "Column count from schema", UBound(cols, 1) + 1, 5
+
+    ' Column name sanitization: add a header with special chars
+    ws.Cells(1, 1) = "Order ID"
+    Set srcRange = ws.Range(ws.Cells(1, 1), ws.Cells(11, 1))
+    DropTable conn, "t_san"
+    RangeToTable conn, "t_san", srcRange, True, True
+    AssertNoError "RangeToTable sanitized headers no error"
+    AssertEqual "Sanitized table row count", TableRowCount(conn, "t_san"), 10
+
+    ' ---- QueryToRange -------------------------------------------------------
+    ' Write a query result back to a different area of the sheet
+    Dim destCell As Range
+    Set destCell = ws.Cells(15, 1)
+    QueryToRange conn, "SELECT id, sym, price FROM t_excel ORDER BY id;", destCell, True
+    AssertNoError "QueryToRange no error"
+
+    ' Verify header row
+    AssertEqual "QueryToRange header col1", CStr(ws.Cells(15, 1).Value), "id"
+    AssertEqual "QueryToRange header col2", CStr(ws.Cells(15, 2).Value), "sym"
+
+    ' Verify first data row
+    AssertEqual "QueryToRange data row1 id",  CLng(ws.Cells(16, 1).Value), 1
+    AssertEqual "QueryToRange data row1 sym", CStr(ws.Cells(16, 2).Value), "SYM1"
+
+    ' Verify last data row (row 15 header + 10 data rows = row 25)
+    AssertEqual "QueryToRange data row10 id", CLng(ws.Cells(25, 1).Value), 10
+
+    DropTable conn, "t_excel"
+    DropTable conn, "t_san"
+    conn.CloseConnection
+
+    ' Clean up temp sheet
+    Application.DisplayAlerts = False
+    ws.Delete
+    Application.DisplayAlerts = True
+    Err.Clear
+    EndSuite
+End Sub
+
+'==============================================================================
+' 38. SQLite3_Logger subsystem
+'==============================================================================
+Public Sub RunTest_Logger()
+    StartSuite "Logger"
+    On Error Resume Next
+
+    ' ---- Configure -----------------------------------------------------------
+    Err.Clear
+    Logger_Configure LOG_DEBUG, True, False, ""
+    AssertNoError "Logger_Configure no error"
+
+    ' ---- IsEnabled ----------------------------------------------------------
+    AssertTrue  "IsEnabled(DEBUG) when level=DEBUG",   Logger_IsEnabled(LOG_DEBUG)
+    AssertTrue  "IsEnabled(INFO)  when level=DEBUG",   Logger_IsEnabled(LOG_INFO)
+    AssertTrue  "IsEnabled(ERROR) when level=DEBUG",   Logger_IsEnabled(LOG_ERROR)
+
+    Logger_SetLevel LOG_WARN
+    AssertFalse "IsEnabled(DEBUG) when level=WARN",    Logger_IsEnabled(LOG_DEBUG)
+    AssertFalse "IsEnabled(INFO)  when level=WARN",    Logger_IsEnabled(LOG_INFO)
+    AssertTrue  "IsEnabled(WARN)  when level=WARN",    Logger_IsEnabled(LOG_WARN)
+    AssertTrue  "IsEnabled(ERROR) when level=WARN",    Logger_IsEnabled(LOG_ERROR)
+    AssertFalse "IsEnabled(NONE)  never produces output", Logger_IsEnabled(LOG_NONE)
+
+    ' ---- GetLevel -----------------------------------------------------------
+    AssertEqual "GetLevel returns WARN", Logger_GetLevel(), LOG_WARN
+
+    ' ---- Named wrappers don't raise at any level ----------------------------
+    Logger_SetLevel LOG_DEBUG
+    Err.Clear
+    Logger_Debug  "RunTest_Logger", "debug message"
+    Logger_Info   "RunTest_Logger", "info message"
+    Logger_Warn   "RunTest_Logger", "warn message"
+    Logger_Error  "RunTest_Logger", "error message (test)"
+    AssertNoError "All named wrappers no error"
+
+    ' ---- LOG_NONE suppresses everything -------------------------------------
+    Logger_SetLevel LOG_NONE
+    AssertFalse "IsEnabled(ERROR) when level=NONE", Logger_IsEnabled(LOG_ERROR)
+
+    ' ---- File sink ----------------------------------------------------------
+    Dim logPath As String
+    logPath = Left(DB_PATH, InStrRev(DB_PATH, "\")) & "_logger_test.log"
+    Kill logPath: Err.Clear
+
+    Logger_Configure LOG_INFO, False, True, logPath
+    AssertNoError "Logger_Configure with file sink no error"
+    AssertEqual "GetFilePath", Logger_GetFilePath(), logPath
+
+    Logger_Info  "RunTest_Logger", "test line INFO"
+    Logger_Warn  "RunTest_Logger", "test line WARN"
+    Logger_Debug "RunTest_Logger", "test line DEBUG (filtered)"
+    Logger_Close
+    AssertNoError "Logger_Close no error"
+
+    ' Verify file was written and contains expected content
+    Dim fileNum As Integer: fileNum = FreeFile()
+    Dim fileContent As String
+    Dim oneLine As String
+    Open logPath For Input As #fileNum
+    Do While Not EOF(fileNum)
+        Line Input #fileNum, oneLine
+        fileContent = fileContent & oneLine & vbCrLf
+    Loop
+    Close #fileNum
+    Err.Clear
+
+    AssertTrue "Log file contains INFO line", _
+               InStr(fileContent, "test line INFO") > 0
+    AssertTrue "Log file contains WARN line", _
+               InStr(fileContent, "test line WARN") > 0
+    AssertFalse "Log file excludes DEBUG line (filtered)", _
+                InStr(fileContent, "test line DEBUG") > 0
+    AssertTrue "Log file contains level tag [INFO ]", _
+               InStr(fileContent, "[INFO ]") > 0
+    AssertTrue "Log file contains level tag [WARN ]", _
+               InStr(fileContent, "[WARN ]") > 0
+
+    Kill logPath: Err.Clear
+
+    ' ---- Restore a usable logger for subsequent suites ----------------------
+    Logger_Configure LOG_INFO, True, False, ""
+
+    ' ---- Zero-cost guard idiom ----------------------------------------------
+    Logger_SetLevel LOG_ERROR
+    Dim guardFired As Boolean: guardFired = False
+    If Logger_IsEnabled(LOG_DEBUG) Then guardFired = True   ' should not fire
+    AssertFalse "Guard idiom: body not entered when level=ERROR", guardFired
+
+    Logger_Configure LOG_INFO, True, False, ""   ' restore default for suite output
     EndSuite
 End Sub
 

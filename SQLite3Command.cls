@@ -23,7 +23,7 @@ Attribute VB_Exposed = False
 '   cmd.BindTextByName ":name", "Alice"
 '   cmd.BindIntByName  ":id",   7
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. Prepare, positional and named binding,
@@ -34,6 +34,7 @@ Attribute VB_Exposed = False
 '            BindVariant handles vbByte+vbArray (type 8209) -> BLOB.
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - Added StmtHandle property for use with SQLite3_Diagnostics.
+'   0.1.5 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

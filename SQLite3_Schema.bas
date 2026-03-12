@@ -18,11 +18,12 @@ Attribute VB_Name = "SQLite3_Schema"
 '
 ' Note: TableExists, ViewExists, IndexExists live in SQLite3_Helpers.bas
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.3 - Initial release.
 '   0.1.4 - No functional changes. Version stamp updated.
+'   0.1.5 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

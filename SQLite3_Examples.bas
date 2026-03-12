@@ -3,7 +3,7 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
@@ -15,6 +15,8 @@ Attribute VB_Name = "SQLite3_Examples"
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - Added Example_Backup, Example_BlobStream, Example_Serialize,
 '            Example_Diagnostics. Added all four to TestAll().
+'   0.1.5 - Added Example_ReadOnly, Example_Checkpoint, Example_QueryPlan,
+'            Example_Excel, Example_Logger. Added all five to TestAll().
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -292,12 +294,206 @@ Public Sub TestAll()
     Example_BlobStream
     Example_Serialize
     Example_Diagnostics
+    Example_ReadOnly
+    Example_Checkpoint
+    Example_QueryPlan
+    Example_Excel
+    Example_Logger
     Debug.Print String(60, "=")
     Debug.Print "All tests passed."
     Exit Sub
 ErrHandler:
     Debug.Print "ERROR: " & Err.Description
     Debug.Print "Source: " & Err.Source
+End Sub
+
+'==============================================================================
+' Example 16: SQLite3_Logger
+' Configure the logger, demonstrate all levels and the file sink.
+'==============================================================================
+Public Sub Example_Logger()
+    ' -- Basic setup: INFO and above to the Immediate window only
+    Logger_Configure LOG_INFO
+    Logger_Info  "Example_Logger", "Logger online -- level=INFO"
+    Logger_Debug "Example_Logger", "This DEBUG line is filtered (not emitted)"
+    Logger_Warn  "Example_Logger", "This WARN  line is emitted"
+
+    ' -- Cheap guard: avoids building the message string when filtered
+    If Logger_IsEnabled(LOG_DEBUG) Then
+        Logger_Debug "Example_Logger", "expensive payload: " & Now()
+    End If
+
+    ' -- Raise level to DEBUG to see all traffic (useful during development)
+    Logger_SetLevel LOG_DEBUG
+    Logger_Debug "Example_Logger", "DEBUG now visible"
+
+    ' -- Use a connection -- OpenDatabase, ExecSQL, and Checkpoint all emit
+    '    Logger events automatically
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+    conn.ExecSQL "CREATE TABLE IF NOT EXISTS log_demo (x INTEGER);"
+    conn.BeginTransaction
+    conn.ExecSQL "INSERT INTO log_demo VALUES (1);"
+    conn.CommitTransaction
+    conn.Checkpoint "PASSIVE"
+    conn.ExecSQL "DROP TABLE IF EXISTS log_demo;"
+    conn.CloseConnection
+
+    ' -- File sink: append to a log file as well as Immediate window
+    Dim logPath As String
+    logPath = Left(DB_PATH, InStrRev(DB_PATH, "\")) & "driver_example.log"
+    Logger_Configure LOG_WARN, True, True, logPath
+    Logger_Warn  "Example_Logger", "This goes to both Immediate and file"
+    Logger_Info  "Example_Logger", "This INFO is filtered (level=WARN)"
+    Logger_Error "Example_Logger", "Simulated ERROR entry"
+    Logger_Close
+
+    Debug.Print "  Log written to: " & logPath
+
+    ' -- Suppress all output (e.g. during perf-sensitive hot path)
+    Logger_Configure LOG_NONE
+    Logger_Error "Example_Logger", "Suppressed -- level=NONE"
+
+    ' -- Restore a normal logger for the rest of the session
+    Logger_Configure LOG_INFO
+    Logger_Info "Example_Logger", "Logger restored to INFO"
+End Sub
+
+'==============================================================================
+' Example 12: Read-only connections
+' Open an existing database for reading without any possibility of writes.
+'==============================================================================
+Public Sub Example_ReadOnly()
+    ' Write something to the database first
+    Dim rw As New SQLite3Connection
+    rw.OpenDatabase DB_PATH, DLL_PATH
+    rw.ExecSQL "CREATE TABLE IF NOT EXISTS ro_demo (id INTEGER PRIMARY KEY, val TEXT);"
+    rw.ExecSQL "INSERT OR IGNORE INTO ro_demo VALUES (1, 'hello');"
+    rw.CloseConnection
+
+    ' Open read-only: pass True for the openReadOnly parameter (6th arg)
+    Dim ro As New SQLite3Connection
+    ro.OpenDatabase DB_PATH, DLL_PATH, 5000, False, 0, True
+    Debug.Print "  IsReadOnly: " & ro.IsReadOnly
+    Debug.Print "  Val:        " & QueryScalar(ro, "SELECT val FROM ro_demo WHERE id=1;")
+
+    ' Any write attempt returns an error -- use On Error to handle gracefully
+    On Error Resume Next
+    ro.ExecSQL "INSERT INTO ro_demo VALUES (2, 'world');"
+    If Err.Number <> 0 Then Debug.Print "  Write blocked as expected: " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+
+    ro.CloseConnection
+End Sub
+
+'==============================================================================
+' Example 13: WAL Checkpoint
+' Manually flush WAL frames to the main database file.
+'==============================================================================
+Public Sub Example_Checkpoint()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH  ' WAL mode (default)
+
+    conn.ExecSQL "CREATE TABLE IF NOT EXISTS ck_demo (x INTEGER);"
+    conn.BeginTransaction
+    Dim i As Long
+    For i = 1 To 500
+        conn.ExecSQL "INSERT INTO ck_demo VALUES (" & i & ");"
+    Next i
+    conn.CommitTransaction
+
+    ' PASSIVE: checkpoint without blocking concurrent writers
+    Dim ck As Variant
+    ck = conn.Checkpoint("PASSIVE")
+    Debug.Print "  PASSIVE  pagesWritten=" & ck(0) & "  pagesRemaining=" & ck(1)
+
+    ' TRUNCATE: fold everything into the main file and reset the WAL to zero
+    ' Use this before hot-backups or SerializeDB to guarantee a clean snapshot
+    Dim ck2 As Variant
+    ck2 = conn.Checkpoint("TRUNCATE")
+    Debug.Print "  TRUNCATE pagesWritten=" & ck2(0) & "  pagesRemaining=" & ck2(1)
+
+    conn.ExecSQL "DROP TABLE IF EXISTS ck_demo;"
+    conn.CloseConnection
+End Sub
+
+'==============================================================================
+' Example 14: EXPLAIN QUERY PLAN
+' Retrieve the query plan for any SQL statement as a Variant matrix.
+'==============================================================================
+Public Sub Example_QueryPlan()
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+
+    conn.ExecSQL "CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY, " & _
+                 "sym TEXT, price REAL, ts INTEGER);"
+    conn.ExecSQL "CREATE INDEX IF NOT EXISTS idx_trades_sym ON trades(sym);"
+
+    ' Full-table scan plan (no WHERE clause)
+    Debug.Print "  -- Plan: SELECT * FROM trades"
+    Dim plan As Variant
+    plan = GetQueryPlan(conn, "SELECT * FROM trades;")
+    If IsArray(plan) Then
+        Dim i As Long
+        For i = 0 To UBound(plan, 1)
+            Debug.Print "    " & plan(i, 3)   ' detail column
+        Next i
+    End If
+
+    ' Index seek plan
+    Debug.Print "  -- Plan: SELECT price FROM trades WHERE sym = 'AAPL'"
+    Dim planIdx As Variant
+    planIdx = GetQueryPlan(conn, "SELECT price FROM trades WHERE sym = 'AAPL';")
+    If IsArray(planIdx) Then
+        For i = 0 To UBound(planIdx, 1)
+            Debug.Print "    " & planIdx(i, 3)
+        Next i
+    End If
+
+    conn.ExecSQL "DROP TABLE IF EXISTS trades;"
+    conn.CloseConnection
+End Sub
+
+'==============================================================================
+' Example 15: Excel integration (RangeToTable / QueryToRange)
+' Import an Excel range into SQLite and write a query result back to a sheet.
+'==============================================================================
+Public Sub Example_Excel()
+    ' Build a small demo range in a temp sheet
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets.Add
+
+    ws.Cells(1, 1) = "ticker": ws.Cells(1, 2) = "price": ws.Cells(1, 3) = "volume"
+    Dim tickers As Variant: tickers = Array("AAPL", "MSFT", "GOOG", "AMZN", "TSLA")
+    Dim i As Long
+    For i = 0 To 4
+        ws.Cells(i + 2, 1) = tickers(i)
+        ws.Cells(i + 2, 2) = 100 + i * 37.5
+        ws.Cells(i + 2, 3) = 1000000 + i * 250000
+    Next i
+
+    ' Import into SQLite (drop & recreate table if it exists)
+    Dim conn As New SQLite3Connection
+    conn.OpenDatabase DB_PATH, DLL_PATH
+    RangeToTable conn, "mkt_snapshot", _
+                 ws.Range(ws.Cells(1, 1), ws.Cells(6, 3)), _
+                 True, True   ' hasHeaders=True, dropIfExists=True
+    Debug.Print "  Rows imported: " & TableRowCount(conn, "mkt_snapshot")
+
+    ' Write top-3 by price back to the sheet
+    Dim dest As Range: Set dest = ws.Cells(10, 1)
+    QueryToRange conn, "SELECT ticker, price FROM mkt_snapshot ORDER BY price DESC LIMIT 3;", _
+                 dest, True
+    Debug.Print "  Top-3 header: " & ws.Cells(10, 1).Value & ", " & ws.Cells(10, 2).Value
+    Debug.Print "  Top ticker:   " & ws.Cells(11, 1).Value
+
+    conn.ExecSQL "DROP TABLE IF EXISTS mkt_snapshot;"
+    conn.CloseConnection
+
+    Application.DisplayAlerts = False
+    ws.Delete
+    Application.DisplayAlerts = True
 End Sub
 
 '==============================================================================

@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_Helpers"
 ' No Declare needed here: CopyMemoryByte lives in SQLite3_API.bas,
 ' and all SQLite wrappers are in SQLite3_API.bas.
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. QueryScalar, TableExists, TableRowCount,
@@ -13,6 +13,7 @@ Attribute VB_Name = "SQLite3_Helpers"
 '   0.1.2 - No functional changes. Version stamp updated.
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
+'   0.1.5 - Added GetQueryPlan -- EXPLAIN QUERY PLAN wrapper returning a matrix.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -117,4 +118,37 @@ Private Function SchemaObjectExists(ByVal conn As SQLite3Connection, _
                           "WHERE type='" & objType & "' AND name='" & _
                           Replace(objName, "'", "''") & "';")
     SchemaObjectExists = (Not IsNull(v)) And (CLng(v) > 0)
+End Function
+
+'==============================================================================
+' GetQueryPlan
+' Run EXPLAIN QUERY PLAN on sql and return the result as a Variant matrix.
+'
+' Returns a (nNodes x 4) matrix with columns:
+'   (col 0) id        INTEGER  - node id within the plan
+'   (col 1) parent    INTEGER  - parent node id (0 = root)
+'   (col 2) notused   INTEGER  - always 0 in current SQLite
+'   (col 3) detail    TEXT     - human-readable description of the plan step
+'
+' Returns Empty if the query produces no plan nodes (DDL statements, etc.).
+'
+' Usage:
+'   Dim plan As Variant
+'   plan = GetQueryPlan(conn, "SELECT * FROM orders WHERE customer_id = 42")
+'   Dim i As Long
+'   For i = 0 To UBound(plan, 1)
+'       Debug.Print plan(i, 3)   ' detail column
+'   Next i
+'==============================================================================
+Public Function GetQueryPlan(ByVal conn As SQLite3Connection, _
+                               ByVal sql As String) As Variant
+    Dim rs As SQLite3Recordset
+    Set rs = conn.OpenRecordset("EXPLAIN QUERY PLAN " & sql)
+    rs.LoadAll
+    If rs.RecordCount = 0 Then
+        GetQueryPlan = Empty
+    Else
+        GetQueryPlan = rs.ToMatrix
+    End If
+    rs.CloseRecordset
 End Function

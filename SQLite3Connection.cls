@@ -12,7 +12,7 @@ Attribute VB_Exposed = False
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
@@ -24,6 +24,12 @@ Attribute VB_Exposed = False
 '   0.1.3 - Added Savepoint, ReleaseSavepoint, RollbackToSavepoint,
 '            SavepointDepth, Interrupt. Added m_savepointDepth state.
 '   0.1.4 - Added DllPath property (needed by SQLite3_Serialize.InMemoryClone).
+'   0.1.5 - LRU timestamps: Timer() replaced with QueryPerformanceCounter.
+'            Added openReadOnly parameter to OpenDatabase; IsReadOnly property.
+'            Added Checkpoint() -- wraps sqlite3_wal_checkpoint_v2.
+'            Integrated SQLite3_Logger: key events emitted at DEBUG/INFO/WARN/
+'            ERROR level. Logger calls are zero-cost when logger is unconfigured
+'            or the event level is below the current threshold.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -43,26 +49,44 @@ Attribute VB_Exposed = False
 '==============================================================================
 Option Explicit
 
-' -- Statement cache entry type -----------------------------------------------
+' QPC for LRU timestamps -- ~100 ns resolution, no midnight wrap.
+' Private so it does not collide with the Public declaration in SQLite3_Tests.
+Private Declare PtrSafe Function QueryPerformanceCounter Lib "kernel32" _
+    (lpPerformanceCount As LongLong) As Long
+
+' -- Statement cache entry ---------------------------------------------------
 Private Type StmtCacheEntry
     hStmt    As LongPtr
     sqlText  As String
-    lastUsed As Double
+    lastUsed As LongLong   ' QPC ticks: monotonic, no midnight wrap
 End Type
 
 Private Const STMT_CACHE_SIZE As Long = 64
 
+' Log-source tag used for all Logger_* calls from this class
+Private Const LOG_SRC As String = "SQLite3Connection"
+
 ' -- Instance state -----------------------------------------------------------
-Private m_pDb        As LongPtr
-Private m_dllPath    As String
-Private m_dbPath     As String
-Private m_busyMs     As Long
-Private m_inTx            As Boolean
-Private m_savepointDepth  As Long
-Private m_cache()         As StmtCacheEntry
-Private m_cacheCount      As Long
-Private m_lastError       As String
-Private m_isOpen          As Boolean
+Private m_pDb            As LongPtr
+Private m_dllPath        As String
+Private m_dbPath         As String
+Private m_busyMs         As Long
+Private m_inTx           As Boolean
+Private m_isReadOnly     As Boolean
+Private m_savepointDepth As Long
+Private m_cache()        As StmtCacheEntry
+Private m_cacheCount     As Long
+Private m_lastError      As String
+Private m_isOpen         As Boolean
+
+'==============================================================================
+' QPC helper -- monotonic tick count as LongLong
+'==============================================================================
+Private Function TickNow() As LongLong
+    Dim t As LongLong
+    QueryPerformanceCounter t
+    TickNow = t
+End Function
 
 '==============================================================================
 ' Lifecycle
@@ -78,11 +102,15 @@ Private Sub Class_Terminate()
     CloseConnection
 End Sub
 
+'==============================================================================
+' OpenDatabase
+'==============================================================================
 Public Sub OpenDatabase(ByVal dbPath As String, _
                         Optional ByVal dllPath As String = "", _
                         Optional ByVal busyTimeoutMs As Long = 5000, _
                         Optional ByVal enableWAL As Boolean = True, _
-                        Optional ByVal mmapSize As Long = 0)
+                        Optional ByVal mmapSize As Long = 0, _
+                        Optional ByVal openReadOnly As Boolean = False)
 
     If m_isOpen Then CloseConnection
 
@@ -92,14 +120,19 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
         SQLite3_API.SQLite_Load m_dllPath
     End If
 
-    m_dbPath = dbPath
-    m_busyMs = busyTimeoutMs
+    m_dbPath     = dbPath
+    m_busyMs     = busyTimeoutMs
+    m_isReadOnly = openReadOnly
 
     Dim pathBytes() As Byte
     pathBytes = SQLite3_API.ToUTF8(dbPath)
 
     Dim flags As Long
-    flags = SQLITE_OPEN_READWRITE Or SQLITE_OPEN_CREATE Or SQLITE_OPEN_FULLMUTEX
+    If openReadOnly Then
+        flags = SQLITE_OPEN_READONLY Or SQLITE_OPEN_FULLMUTEX
+    Else
+        flags = SQLITE_OPEN_READWRITE Or SQLITE_OPEN_CREATE Or SQLITE_OPEN_FULLMUTEX
+    End If
 
     Dim rc As Long
     rc = sqlite3_open_v2(VarPtr(pathBytes(0)), m_pDb, flags, CLngPtr(0))
@@ -108,7 +141,8 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
     sqlite3_busy_timeout m_pDb, m_busyMs
     m_isOpen = True
 
-    If enableWAL Then
+    ' WAL and autocheckpoint require write access.
+    If enableWAL And Not openReadOnly Then
         ExecSQL "PRAGMA journal_mode=WAL;"
         ExecSQL "PRAGMA wal_autocheckpoint=1000;"
     End If
@@ -118,9 +152,15 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
     ExecSQL "PRAGMA synchronous=NORMAL;"
     ExecSQL "PRAGMA cache_size=-65536;"
     ExecSQL "PRAGMA temp_store=MEMORY;"
-    ExecSQL "PRAGMA locking_mode=NORMAL;"
+    If Not openReadOnly Then ExecSQL "PRAGMA locking_mode=NORMAL;"
+
+    Logger_Info LOG_SRC, "Opened " & IIf(openReadOnly, "[READ-ONLY] ", "") & _
+                          "db=" & dbPath
 End Sub
 
+'==============================================================================
+' CloseConnection
+'==============================================================================
 Public Sub CloseConnection()
     If Not m_isOpen Then Exit Sub
     m_isOpen = False
@@ -134,10 +174,18 @@ Public Sub CloseConnection()
         sqlite3_close m_pDb
         m_pDb = 0
     End If
+    Logger_Info LOG_SRC, "Closed db=" & m_dbPath
 End Sub
 
+'==============================================================================
+' Properties
+'==============================================================================
 Public Property Get IsOpen() As Boolean
     IsOpen = m_isOpen
+End Property
+
+Public Property Get IsReadOnly() As Boolean
+    IsReadOnly = m_isReadOnly
 End Property
 
 Public Property Get Handle() As LongPtr
@@ -148,17 +196,33 @@ Public Property Get LastError() As String
     LastError = m_lastError
 End Property
 
+Public Property Get InTransaction() As Boolean
+    InTransaction = m_inTx
+End Property
+
+Public Property Get SavepointDepth() As Long
+    SavepointDepth = m_savepointDepth
+End Property
+
 '==============================================================================
-' Statement cache  (LRU eviction)
+' Statement cache  (64-slot LRU, QPC timestamps)
 '==============================================================================
 Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
-    Dim i As Long, oldest As Long, oldestTick As Double
-    oldestTick = 1E+308
+    Dim i As Long
+    Dim oldest As Long
+    ' The ^ suffix is mandatory: without it VBA treats &H7FFFFFFFFFFFFFFF as a
+    ' 32-bit Long literal, which overflows and produces a compile error.
+    Dim oldestTick As LongLong: oldestTick = &H7FFFFFFFFFFFFFFF^
+
     For i = 0 To m_cacheCount - 1
         If m_cache(i).sqlText = sql Then
-            m_cache(i).lastUsed = Timer()
+            m_cache(i).lastUsed = TickNow()
             sqlite3_reset m_cache(i).hStmt
             sqlite3_clear_bindings m_cache(i).hStmt
+            If Logger_IsEnabled(LOG_DEBUG) Then
+                Logger_Debug LOG_SRC, "Cache HIT  slot=" & i & _
+                             " sql=" & Left(sql, 80)
+            End If
             GetCachedStatement = m_cache(i).hStmt
             Exit Function
         End If
@@ -168,6 +232,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
         End If
     Next i
 
+    ' Cache miss -- compile and store a new prepared statement
     Dim pStmt As LongPtr, pTail As LongPtr
     Dim sqlBytes() As Byte
     sqlBytes = SQLite3_API.ToUTF8(sql)
@@ -182,10 +247,20 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
     Else
         sqlite3_finalize m_cache(oldest).hStmt
         slot = oldest
+        If Logger_IsEnabled(LOG_DEBUG) Then
+            Logger_Debug LOG_SRC, "Cache EVICT slot=" & slot & _
+                         " evicted=" & Left(m_cache(slot).sqlText, 60)
+        End If
     End If
+
     m_cache(slot).sqlText  = sql
     m_cache(slot).hStmt    = pStmt
-    m_cache(slot).lastUsed = Timer()
+    m_cache(slot).lastUsed = TickNow()
+
+    If Logger_IsEnabled(LOG_DEBUG) Then
+        Logger_Debug LOG_SRC, "Cache MISS slot=" & slot & _
+                     " sql=" & Left(sql, 80)
+    End If
     GetCachedStatement = pStmt
 End Function
 
@@ -202,10 +277,11 @@ Private Sub ClearStatementCache()
         End If
     Next i
     m_cacheCount = 0
+    Logger_Debug LOG_SRC, "Statement cache cleared"
 End Sub
 
 '==============================================================================
-' Execute (fire-and-forget SQL, no result set)
+' ExecSQL  -  fire-and-forget, no result set
 '==============================================================================
 Public Sub ExecSQL(ByVal sql As String)
     AssertOpen
@@ -216,6 +292,8 @@ Public Sub ExecSQL(ByVal sql As String)
     rc = sqlite3_exec(m_pDb, VarPtr(sqlBytes(0)), CLngPtr(0), CLngPtr(0), pErr)
     If rc <> SQLITE_OK Then
         m_lastError = sqlite3_errmsg_str(m_pDb)
+        Logger_Error LOG_SRC, "ExecSQL rc=" & rc & " err=" & m_lastError & _
+                               " sql=" & sql
         Err.Raise vbObjectError + 100, "SQLite3Connection.ExecSQL", _
                   "SQLite error " & rc & ": " & m_lastError & " - SQL: " & sql
     End If
@@ -227,16 +305,19 @@ End Sub
 Public Sub BeginTransaction()
     ExecSQL "BEGIN;"
     m_inTx = True
+    Logger_Debug LOG_SRC, "BEGIN"
 End Sub
 
 Public Sub BeginImmediate()
     ExecSQL "BEGIN IMMEDIATE;"
     m_inTx = True
+    Logger_Debug LOG_SRC, "BEGIN IMMEDIATE"
 End Sub
 
 Public Sub CommitTransaction()
     ExecSQL "COMMIT;"
     m_inTx = False
+    Logger_Debug LOG_SRC, "COMMIT"
 End Sub
 
 Public Sub RollbackTransaction()
@@ -244,53 +325,78 @@ Public Sub RollbackTransaction()
     ExecSQL "ROLLBACK;"
     m_inTx = False
     On Error GoTo 0
+    Logger_Warn LOG_SRC, "ROLLBACK"
 End Sub
 
-Public Property Get InTransaction() As Boolean
-    InTransaction = m_inTx
-End Property
-
 '==============================================================================
-' Savepoints  (nested transactions - SQL:2003)
-' A savepoint is a named point within a transaction that can be rolled back
-' to independently, without affecting the outer transaction.
-' Savepoints are reentrant: you can nest them arbitrarily deep.
+' Savepoints  (nested transactions -- SQL:2003)
 '==============================================================================
 Public Sub Savepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "SAVEPOINT [" & spName & "];"
     m_savepointDepth = m_savepointDepth + 1
+    Logger_Debug LOG_SRC, "SAVEPOINT [" & spName & "] depth=" & m_savepointDepth
 End Sub
 
-' Commit everything back to (and remove) the named savepoint.
 Public Sub ReleaseSavepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "RELEASE SAVEPOINT [" & spName & "];"
     If m_savepointDepth > 0 Then m_savepointDepth = m_savepointDepth - 1
+    Logger_Debug LOG_SRC, "RELEASE [" & spName & "] depth=" & m_savepointDepth
 End Sub
 
-' Undo all changes made after the savepoint without leaving the transaction.
 Public Sub RollbackToSavepoint(ByVal spName As String)
     AssertOpen
     ExecSQL "ROLLBACK TO SAVEPOINT [" & spName & "];"
+    Logger_Warn LOG_SRC, "ROLLBACK TO SAVEPOINT [" & spName & "]"
 End Sub
-
-Public Property Get SavepointDepth() As Long
-    SavepointDepth = m_savepointDepth
-End Property
 
 '==============================================================================
 ' Interrupt
-' Signal SQLite to abort any pending query on this connection at the next
-' opportunity.  The blocked call returns SQLITE_INTERRUPT (rc=9).
-' Safe to call at any time, including from a timer, while a query is running.
 '==============================================================================
 Public Sub Interrupt()
-    If m_isOpen Then sqlite3_interrupt m_pDb
+    If m_isOpen Then
+        sqlite3_interrupt m_pDb
+        Logger_Warn LOG_SRC, "sqlite3_interrupt signalled"
+    End If
 End Sub
 
 '==============================================================================
-' Query helper
+' Checkpoint
+'==============================================================================
+Public Function Checkpoint(Optional ByVal mode As String = "PASSIVE", _
+                            Optional ByVal schema As String = "main") As Variant
+    AssertOpen
+    Dim eMode As Long
+    Select Case UCase(Trim(mode))
+        Case "FULL":     eMode = SQLITE_CHECKPOINT_FULL
+        Case "RESTART":  eMode = SQLITE_CHECKPOINT_RESTART
+        Case "TRUNCATE": eMode = SQLITE_CHECKPOINT_TRUNCATE
+        Case Else:       eMode = SQLITE_CHECKPOINT_PASSIVE
+    End Select
+
+    Dim schBytes() As Byte: schBytes = SQLite3_API.ToUTF8(schema)
+    Dim nLog As Long, nCkpt As Long
+    Dim rc As Long
+    rc = sqlite3_wal_checkpoint_v2(m_pDb, VarPtr(schBytes(0)), eMode, _
+                                    VarPtr(nLog), VarPtr(nCkpt))
+
+    If rc <> SQLITE_OK And rc <> SQLITE_BUSY Then
+        m_lastError = sqlite3_errmsg_str(m_pDb)
+        Logger_Error LOG_SRC, "Checkpoint(" & mode & ") rc=" & rc & _
+                               " err=" & m_lastError
+        Err.Raise vbObjectError + 110, "SQLite3Connection.Checkpoint", _
+                  "sqlite3_wal_checkpoint_v2 failed (rc=" & rc & "): " & m_lastError
+    End If
+
+    Logger_Info LOG_SRC, "Checkpoint(" & mode & ") pagesWritten=" & nLog & _
+                          " pagesRemaining=" & nCkpt & _
+                          IIf(rc = SQLITE_BUSY, " [BUSY]", "")
+    Checkpoint = Array(nLog, nCkpt)
+End Function
+
+'==============================================================================
+' OpenRecordset
 '==============================================================================
 Public Function OpenRecordset(ByVal sql As String) As SQLite3Recordset
     AssertOpen
@@ -332,6 +438,7 @@ End Sub
 Private Sub CheckRC(ByVal rc As Long, ByVal context As String)
     If rc <> SQLITE_OK Then
         m_lastError = sqlite3_errmsg_str(m_pDb)
+        Logger_Error LOG_SRC, context & " rc=" & rc & " err=" & m_lastError
         Err.Raise vbObjectError + 100, "SQLite3Connection." & context, _
                   "SQLite error " & rc & ": " & m_lastError
     End If

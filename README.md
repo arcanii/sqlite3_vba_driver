@@ -7,6 +7,7 @@ A VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party
 dependencies beyond the SQLite DLL itself. Every SQLite call goes through
 `DispCallFunc`, so the DLL path is configurable at runtime with no compile-time
 `Declare` statements.
+Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended.
 
 ---
 
@@ -23,7 +24,7 @@ TLDR Section (for those who have no attention span)
    - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`
    - `Private Const LOG_PATH As String = "C:\sqlite\test_results.log"` (set to `""` to disable)
 8. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
-9. All 305 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
+9. All 365 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
 
 ---
 
@@ -31,6 +32,7 @@ Versions
 =======
 | Version | Date           | Tests | Pass | Highlights |
 |---------|----------------|-------|------|------------|
+| 0.1.5 | 12 March, 2026 |  365  |  365 | Excel integration, EXPLAIN QUERY PLAN, read-only connections, Checkpoint(), QPC LRU fix, SerializeDB auto-checkpoint, structured logging |
 | 0.1.4 | 12 March, 2026 |  305  |  305 | Online Backup API, incremental BLOB I/O, serialize/deserialize, diagnostics, file log output |
 | 0.1.3 | 11 March, 2026 |  240  |  240 | Schema introspection, savepoints, JSON functions, interrupt, failed-test summary |
 | 0.1.2 | 11 March, 2026 |  171  |  171 | BLOB support, aggregate helpers, FTS5 full-text search, GPLv3 license |
@@ -71,60 +73,63 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 
 ---
 
-## What's New in 0.1.4
+## What's New in 0.1.5
 
 ### New modules
 
-- **`SQLite3Backup.cls`** — Online Backup API wrapper. Live hot-backup of any open
-  database to a file without blocking readers or writers on the source.
-  One-shot (`BackupToFile`) and incremental (`OpenBackup` / `Step` / `CloseBackup`)
-  modes. Progress reporting via `Progress`, `PagesRemaining`, `TotalPages`.
+- **`SQLite3_Logger.bas`** — Structured logging subsystem. Five levels: `LOG_DEBUG`,
+  `LOG_INFO`, `LOG_WARN`, `LOG_ERROR`, `LOG_NONE`. Two sinks: Immediate window and
+  append-mode file. `Logger_Configure` / `Logger_SetLevel` / `Logger_Close` for
+  lifecycle control. `Logger_IsEnabled(level)` cheap boolean guard avoids building
+  message strings when the level is filtered. `SQLite3Connection` emits events
+  automatically at appropriate levels throughout — open/close, cache hit/miss/evict,
+  every transaction verb, checkpoint results, and all error paths.
 
-- **`SQLite3BlobStream.cls`** — Incremental BLOB I/O via `sqlite3_blob_open`.
-  Read and write arbitrary byte ranges of a stored BLOB without loading the
-  entire value into memory. `OpenBlob`, `ReadBytes`, `ReadAt`, `WriteBytes`,
-  `WriteAt`, `SeekTo`, `Position`, `Size`.
+- **`SQLite3_Excel.bas`** — Excel ↔ SQLite integration. `RangeToTable` imports any
+  `Range` or `ListObject` into a SQLite table: reads the entire range in one `.Value`
+  call, infers column types from the first data row (Date→TEXT/ISO 8601,
+  whole numbers→INTEGER, floats→REAL, else TEXT), sanitizes header strings into valid
+  SQL identifiers, creates the table, and bulk-inserts via `SQLite3BulkInsert`.
+  `QueryToRange` runs a SQL query and writes the result set back to a worksheet range,
+  optionally including column headers.
 
-- **`SQLite3_Serialize.bas`** — In-process DB serialization via `sqlite3_serialize` /
-  `sqlite3_deserialize` (requires SQLite 3.23+). Snapshot a live database to a VBA
-  `Byte()` array (`SerializeDB`), restore a snapshot to any connection (`DeserializeDB`),
-  or clone a connection to a new independent `:memory:` database (`InMemoryClone`).
-  `InMemoryClone` uses the backup API internally for a clean page-level copy.
+### SQLite3Connection.cls
 
-- **`SQLite3_Diagnostics.bas`** — Runtime performance counters via `sqlite3_db_status`
-  and `sqlite3_stmt_status`. `GetDbStatus`, `GetDbStatusValue`, `ResetDbStatus`,
-  `GetStmtStatus`, `GetAllStmtStatus`, `DbStatusSummary`.
+- **Read-only connections** — new `openReadOnly` parameter on `OpenDatabase`; opens
+  with `SQLITE_OPEN_READONLY`. WAL and `locking_mode` pragmas are skipped. Write
+  attempts raise `SQLITE_READONLY` from SQLite. `IsReadOnly` property added.
+- **`Checkpoint(mode, schema)`** — wraps `sqlite3_wal_checkpoint_v2`. Modes: `PASSIVE`
+  (default), `FULL`, `RESTART`, `TRUNCATE`. Returns `Array(pagesWritten, pagesRemaining)`.
+- **QPC LRU timestamps** — statement cache `lastUsed` field changed from `Double`
+  (Timer(), 1-second resolution, wraps at midnight) to `LongLong` (QPC ticks,
+  ~100 ns resolution, no wrap for 292 years).
+- **Logger integration** — key events emitted automatically at DEBUG/INFO/WARN/ERROR.
 
 ### SQLite3_API.bas
 
-PROC_COUNT increased from 31 → 47. New wrappers:
-`sqlite3_backup_init/step/finish/remaining/pagecount`,
-`sqlite3_blob_open/read/write/close/bytes`,
-`sqlite3_serialize`, `sqlite3_deserialize`, `sqlite3_malloc`, `sqlite3_free`,
-`sqlite3_db_status`, `sqlite3_stmt_status`.
+- `sqlite3_wal_checkpoint_v2` wrapper added (`P_WAL_CKPT = 47`).
+- `SQLITE_OPEN_READONLY` and `SQLITE_CHECKPOINT_PASSIVE/FULL/RESTART/TRUNCATE` constants added.
+- `PROC_COUNT` bumped from 47 → 48.
+
+### SQLite3_Helpers.bas
+
+- **`GetQueryPlan(conn, sql)`** — runs `EXPLAIN QUERY PLAN` and returns the result as
+  a `(n × 4)` Variant matrix: columns `(id, parent, notused, detail)`. One call,
+  immediately useful for index tuning.
+
+### SQLite3_Serialize.bas
+
+- **`SerializeDB` auto-checkpoint** — calls `sqlite3_wal_checkpoint_v2` with `TRUNCATE`
+  mode before serializing. Outstanding WAL frames are folded into the main file first,
+  so the snapshot is always clean regardless of whether the source is WAL-mode. The
+  checkpoint error is swallowed silently (non-WAL databases return `SQLITE_OK`
+  immediately; a `SQLITE_BUSY` still produces a valid, slightly stale, snapshot).
 
 ### SQLite3_Tests.bas
 
-- 4 new test suites (30–33): `RunTest_Backup`, `RunTest_BlobStream`,
-  `RunTest_Serialize`, `RunTest_Diagnostics`
-- 62 new tests — total **302/302**
-- **File log output** — `RunAllTests` writes a complete copy of all test output to
-  `LOG_PATH` (configurable constant at the top of the file; set to `""` to disable).
-  Every PASS, FAIL, TIME, and INFO line goes to the log. The path is printed to the
-  Immediate window at the end of the run.
-
-### Bug fix — `SQLite3Backup.cls`
-
-`IsComplete` incorrectly returned `True` before the first `Step` call because
-`sqlite3_backup_remaining` returns 0 until the first step (per SQLite docs).
-`BackupToFile` therefore copied zero pages and produced an empty file.
-
-Fixed: `IsComplete` now returns `False` until at least one `Step` has executed;
-`BackupToFile` uses `Do … Loop Until` to guarantee at least one step fires.
-
-### Limitation removed
-
-*"No streaming BLOBs"* — resolved by `SQLite3BlobStream.cls`.
+- 5 new test suites (34–38): `RunTest_ReadOnly`, `RunTest_Checkpoint`,
+  `RunTest_QueryPlan`, `RunTest_Excel`, `RunTest_Logger`
+- Total: **365 / 365**
 
 ---
 
@@ -137,7 +142,7 @@ Fixed: `IsComplete` now returns `False` until at least one `Step` has executed;
 | Prepared statements | Positional (`?`) and named (`:param`) binding |
 | BLOB support | `BindBlob`, `AsBytes()`, vectorized BLOB load |
 | Incremental BLOB I/O | `SQLite3BlobStream` — read/write byte ranges without full load |
-| Statement cache | 64-slot LRU per connection — cache hit = reset only, no re-prepare |
+| Statement cache | 64-slot LRU per connection (QPC timestamps) — cache hit = reset only, no re-prepare |
 | ADO-style recordset | `BOF`/`EOF`/`MoveNext`/`MoveLast`, `rs!FieldName` syntax |
 | Vectorized load | `LoadAll()` pulls entire result into a Variant matrix (~50× faster than live) |
 | `ToMatrix()` | Returns `(row, col)` Variant array ready for direct Excel range assignment |
@@ -153,8 +158,13 @@ Fixed: `IsComplete` now returns `False` until at least one `Step` has executed;
 | Aggregate helpers | `GroupBy*`, `ScalarAgg`, `MultiAgg`, `RunningTotal`, `Histogram` |
 | JSON functions | `JSONExtract`, `JSONSet`, `JSONPatch`, `JSONSearch`, `JSONGroupArray` and more |
 | FTS5 full-text search | Create, insert, search, snippet, highlight, BM25 ranking, optimize |
-| WAL mode | Enabled by default on `OpenDatabase` |
-| QPC benchmarking | `QueryPerformanceCounter` timing in every test suite |
+| WAL mode | Enabled by default on `OpenDatabase`; skip with `enableWAL=False` |
+| Read-only connections | `openReadOnly=True` — `SQLITE_OPEN_READONLY`; writes raise `SQLITE_READONLY` |
+| WAL checkpoint | `conn.Checkpoint(mode)` — PASSIVE / FULL / RESTART / TRUNCATE |
+| Excel integration | `RangeToTable` (range→SQLite) and `QueryToRange` (SQL→worksheet) |
+| EXPLAIN QUERY PLAN | `GetQueryPlan(conn, sql)` returns plan nodes as a Variant matrix |
+| Structured logging | `SQLite3_Logger`: DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
+| QPC benchmarking | `QueryPerformanceCounter` timing in every test suite and LRU cache |
 | File log output | `RunAllTests` writes a full copy of results to `LOG_PATH` |
 | Failed-test summary | All failures reprinted at the end of `RunAllTests` |
 | 64-bit only | All handles are `LongPtr` / `LongLong` — requires 64-bit Excel |
@@ -165,26 +175,28 @@ Fixed: `IsComplete` now returns `False` until at least one `Step` has executed;
 
 | File | Role |
 |------|------|
-| `SQLite3_API.bas` | DLL loader, 47 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
+| `SQLite3_API.bas` | DLL loader, 48 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
 | `SQLite3_API_Ext.bas` | Auxiliary dispatch bridge; secondary DLL handle copy |
-| `SQLite3_Helpers.bas` | `QueryScalar`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange` |
-| `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU statement cache, transactions, savepoints, interrupt |
+| `SQLite3_Helpers.bas` | `QueryScalar`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange`, `GetQueryPlan` |
+| `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU cache (QPC), transactions, savepoints, interrupt, checkpoint, read-only mode |
 | `SQLite3Recordset.cls` | Live and vectorized recordset, `GetRows()`, `ToMatrix()`, `rs!Field` |
 | `SQLite3Fields.cls` | Case-insensitive field collection, `For Each` enumerator |
 | `SQLite3Field.cls` | Zero-copy value reads; `Value`, `AsString`, `AsBytes`, `AsInt64` |
 | `SQLite3Command.cls` | Positional and named binding, `BindBlob`, `BindVariant`, `ExecuteScalar` |
 | `SQLite3BulkInsert.cls` | High-speed batch insert, `AppendRow`, `AppendMatrix` |
 | `SQLite3Pool.cls` | Connection pool, LRU reaping, auto-rollback on release, pre-warm |
-| `SQLite3Backup.cls` | **NEW** Online Backup API — `BackupToFile`, `OpenBackup`, `Step`, `CloseBackup`, progress |
-| `SQLite3BlobStream.cls` | **NEW** Incremental BLOB I/O — `OpenBlob`, `ReadAt`, `WriteAt`, `SeekTo` |
-| `SQLite3_Serialize.bas` | **NEW** Serialize/deserialize — `SerializeDB`, `DeserializeDB`, `InMemoryClone` |
-| `SQLite3_Diagnostics.bas` | **NEW** Runtime counters — `GetDbStatus`, `GetStmtStatus`, `DbStatusSummary` |
+| `SQLite3Backup.cls` | Online Backup API — `BackupToFile`, `OpenBackup`, `Step`, `CloseBackup`, progress |
+| `SQLite3BlobStream.cls` | Incremental BLOB I/O — `OpenBlob`, `ReadAt`, `WriteAt`, `SeekTo` |
+| `SQLite3_Serialize.bas` | Serialize/deserialize — `SerializeDB`, `DeserializeDB`, `InMemoryClone` |
+| `SQLite3_Diagnostics.bas` | Runtime counters — `GetDbStatus`, `GetStmtStatus`, `DbStatusSummary` |
 | `SQLite3_Schema.bas` | Schema introspection — tables, columns, indexes, FKs, triggers, PRAGMA info |
 | `SQLite3_Aggregates.bas` | SQL aggregate and window function helpers |
 | `SQLite3_FTS5.bas` | FTS5 full-text search helpers |
 | `SQLite3_JSON.bas` | SQLite built-in JSON function wrappers (requires SQLite 3.38+) |
+| `SQLite3_Excel.bas` | Excel integration — `RangeToTable`, `QueryToRange` |
+| `SQLite3_Logger.bas` | Structured logging — DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
 | `SQLite3_Examples.bas` | Annotated usage examples for every feature |
-| `SQLite3_Tests.bas` | 302-test automated suite with QPC timing, file logging, and failure summary |
+| `SQLite3_Tests.bas` | 365-test automated suite with QPC timing, file logging, and failure summary |
 | `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded |
 
 ---
@@ -572,7 +584,7 @@ VBA code
   +--> SQLite3Connection / SQLite3Command / SQLite3Recordset / ...
          +--> SQLite3_API.bas
                 +-- LoadLibraryW("sqlite3.dll")    <- once at first OpenDatabase
-                +-- GetProcAddress x 47            <- cached in m_procs(47)
+                +-- GetProcAddress x 48            <- cached in m_procs(48)
                 +--> DispCallFunc(0, m_procs(n), CC_CDECL, ...)  <- every call
                        +--> sqlite3.dll  (__cdecl ABI)
 ```

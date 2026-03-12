@@ -26,7 +26,7 @@ Attribute VB_Exposed = False
 ' Or feed a 2-D Variant array directly:
 '   bulk.AppendMatrix data2D   ' (rowCount, colCount)
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. AppendRow, AppendMatrix, transaction batching,
@@ -37,6 +37,7 @@ Attribute VB_Exposed = False
 '   0.1.2 - BindVariant now handles byte-array (BLOB) columns.
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
+'   0.1.5 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

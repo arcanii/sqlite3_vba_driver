@@ -4,7 +4,7 @@ Attribute VB_Name = "SQLite3_API"
 ' Architecture : LoadLibrary / GetProcAddress / DispCallFunc
 ' Key point    : prgpvarg must be ByRef LongPtr (array of ptrs to Variants)
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. LoadLibrary/DispCallFunc loader, 28 proc cache,
@@ -23,6 +23,9 @@ Attribute VB_Name = "SQLite3_API"
 '            Added serialize/deserialize + sqlite3_malloc/free.
 '            Added sqlite3_db_status, sqlite3_stmt_status.
 '            PROC_COUNT bumped from 31 to 47.
+'   0.1.5 - Added sqlite3_wal_checkpoint_v2 wrapper (P_WAL_CKPT=47).
+'            Added SQLITE_OPEN_READONLY and SQLITE_CHECKPOINT_* constants.
+'            PROC_COUNT bumped from 47 to 48.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -86,7 +89,14 @@ Public Const SQLITE_ROW   As Long = 100
 Public Const SQLITE_DONE  As Long = 101
 Public Const SQLITE_OPEN_READWRITE As Long = 2
 Public Const SQLITE_OPEN_CREATE    As Long = 4
+Public Const SQLITE_OPEN_READONLY  As Long = 1   ' open for reading only
 Public Const SQLITE_OPEN_FULLMUTEX As Long = &H10000
+
+' -- WAL checkpoint mode constants --------------------------------------------
+Public Const SQLITE_CHECKPOINT_PASSIVE  As Long = 0  ' don't block writers
+Public Const SQLITE_CHECKPOINT_FULL     As Long = 1  ' wait for writers then checkpoint
+Public Const SQLITE_CHECKPOINT_RESTART  As Long = 2  ' full + wait for readers
+Public Const SQLITE_CHECKPOINT_TRUNCATE As Long = 3  ' restart + truncate WAL to zero
 
 ' -- SQLite column type constants ---------------------------------------------
 Public Const SQLITE_INTEGER As Long = 1
@@ -102,7 +112,7 @@ Public Const SQLITE_TRANSIENT As LongLong = -1
 Private Const CP_UTF8 As Long = 65001
 
 Private m_hDll      As LongPtr
-Private m_procs(46) As LongPtr
+Private m_procs(47) As LongPtr
 
 Private Const P_OPEN_V2        As Long = 0
 Private Const P_CLOSE          As Long = 1
@@ -152,7 +162,9 @@ Private Const P_MALLOC         As Long = 43
 Private Const P_FREE           As Long = 44
 Private Const P_DB_STATUS      As Long = 45
 Private Const P_STMT_STATUS    As Long = 46
-Private Const PROC_COUNT       As Long = 47
+' v0.1.5 additions
+Private Const P_WAL_CKPT       As Long = 47
+Private Const PROC_COUNT       As Long = 48
 
 '==============================================================================
 ' Library lifecycle
@@ -729,6 +741,31 @@ Public Function sqlite3_stmt_status(ByVal pStmt As LongPtr, _
 End Function
 
 '==============================================================================
+' sqlite3_wal_checkpoint_v2
+' Manually checkpoint a WAL-mode database.
+'   pDb      : open database handle
+'   pDbName  : UTF-8 schema name pointer (e.g. VarPtr(ToUTF8("main")(0))), or 0
+'   eMode    : SQLITE_CHECKPOINT_PASSIVE / FULL / RESTART / TRUNCATE
+'   pnLog    : pointer to Long that receives total WAL frames (or 0 to ignore)
+'   pnCkpt   : pointer to Long that receives frames checkpointed (or 0 to ignore)
+' Returns SQLITE_OK on success, SQLITE_BUSY if blocked (PASSIVE mode only).
+'==============================================================================
+Public Function sqlite3_wal_checkpoint_v2(ByVal pDb As LongPtr, _
+                                           ByVal pDbName As LongPtr, _
+                                           ByVal eMode As Long, _
+                                           ByVal pnLog As LongPtr, _
+                                           ByVal pnCkpt As LongPtr) As Long
+    Dim args(4) As Variant, vt(4) As Integer, ptrs(4) As LongPtr, ret As Variant
+    args(0) = CLngLng(pDb):     vt(0) = VT_I8: ptrs(0) = VarPtr(args(0))
+    args(1) = CLngLng(pDbName): vt(1) = VT_I8: ptrs(1) = VarPtr(args(1))
+    args(2) = CLng(eMode):      vt(2) = VT_I4: ptrs(2) = VarPtr(args(2))
+    args(3) = CLngLng(pnLog):   vt(3) = VT_I8: ptrs(3) = VarPtr(args(3))
+    args(4) = CLngLng(pnCkpt):  vt(4) = VT_I8: ptrs(4) = VarPtr(args(4))
+    DispCallFunc CLngPtr(0), m_procs(P_WAL_CKPT), CC_CDECL, VT_I4, 5, vt(0), ptrs(0), ret
+    sqlite3_wal_checkpoint_v2 = CLng(ret)
+End Function
+
+'==============================================================================
 ' Private helpers
 '==============================================================================
 Private Function ProcName(ByVal idx As Long) As String
@@ -780,6 +817,7 @@ Private Function ProcName(ByVal idx As Long) As String
         Case P_FREE:           ProcName = "sqlite3_free"
         Case P_DB_STATUS:      ProcName = "sqlite3_db_status"
         Case P_STMT_STATUS:    ProcName = "sqlite3_stmt_status"
+        Case P_WAL_CKPT:       ProcName = "sqlite3_wal_checkpoint_v2"
         Case Else:             ProcName = ""
     End Select
 End Function

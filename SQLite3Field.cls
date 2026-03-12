@@ -11,7 +11,7 @@ Attribute VB_Exposed = False
 ' SQLite3Field.cls  -  ADO-style Field object (64-bit only)
 ' Zero-allocation: value reads directly against the live sqlite3_stmt*
 '
-' Version : 0.1.4
+' Version : 0.1.5
 '
 ' Version History:
 '   0.1.0 - Initial release. Name, Ordinal, Value (default member), AsString,
@@ -22,6 +22,7 @@ Attribute VB_Exposed = False
 '            (replaces slow per-byte CopyMemory loop).
 '   0.1.3 - No functional changes. Version stamp updated.
 '   0.1.4 - No functional changes. Version stamp updated.
+'   0.1.5 - No functional changes. Version stamp updated.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
