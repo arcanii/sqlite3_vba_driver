@@ -7,7 +7,7 @@ A **very rich** VBA SQLite3 driver for 64-bit Excel. No registered COM objects, 
 dependencies beyond the SQLite DLL itself. Every SQLite call goes through
 `DispCallFunc`, so the DLL path is configurable at runtime with no compile-time
 `Declare` statements. This tries to implement the full sqlite functionality set so you can use it in Excel (not tested with Word or Access, but I guess it should work)
-Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended in about 3 days (very impressive!)
+Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended in about 3 days (I am very impressed so far!)
 
 ---
 
@@ -770,5 +770,6 @@ PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 
 
