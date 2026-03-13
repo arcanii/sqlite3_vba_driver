@@ -15,16 +15,16 @@ TLDR Section (for those who have no attention span)
 =======
 1. Get `sqlite3.dll` (64-bit) from [sqlite.org/download](https://sqlite.org/download.html) — under *Precompiled Binaries for Windows*, grab **`sqlite-dll-win-x64-*.zip`**.
 2. You need 64-bit Microsoft Excel (2016 or later).
-3. Make a directory (e.g. `C:\sqlite\`) — this can go anywhere, but if you change it you must also update the constants in step 7.
-4. Put `sqlite3.dll` in that directory (`C:\sqlite\`, or if you want to skip step 7).
+3. Make a directory (e.g. `C:\sqlite\`) — this can go anywhere; you must update the constants in step 7 for the tests.
+4. Put `sqlite3.dll` in that directory.
 5. Download `Test-SQLite3-VBA-Driver.xlsm` from this repo, open it and enable macros.
 6. Press `Alt+F11` to open the Visual Basic Editor.
-7. **Only if you changed `C:\sqlite\`** — find `SQLite3_Tests.bas` in the Project Explorer. Near the top of the file, update:
+7. find `SQLite3_Tests.bas` in the Project Explorer. Near the top of the file, 3 lines to check/update:
    - `Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"` (or just `"sqlite3.dll"` if you used System32)
-   - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`
+   - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`  ← this is the actual sqlite3 database file. It will be created, and removed by the tests.
    - `Private Const LOG_PATH As String = "C:\sqlite\test_results.log"` (set to `""` to disable)
-   - (Update: the `SQLite3_Tests.bas` in the release assumes you are using the Security Option A : `sqlite3.dll` is in System32, so you have to change `SQLite3_Tests.bas` if you want it somewhere else)
-8. Enable "Trust access to the VBA project object model": `File → Options → Trust Center → Trust Center Settings → Macro Settings` — tick the checkbox. This lets the test runner detect which optional `.cls` files you have imported, so it can skip those suites gracefully. Without it you'll get a permissions error.
+   - (the `SQLite3_Tests.bas` in the release assumes you are using the Security Option A : `sqlite3.dll` is in System32, so you have to change `SQLite3_Tests.bas` if you want it somewhere else)
+8. Enable "Trust access to the VBA project object model": `File → Options → Trust Center → Trust Center Settings → Macro Settings` — tick the `Trust access to the VBA project object model` checkbox. This lets the test runner detect which optional `.cls` files you have imported, so it can skip those suites gracefully. Without it you'll get a permissions error.
 9. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
 10. All 434 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
 
