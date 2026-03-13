@@ -58,9 +58,9 @@ Public Declare PtrSafe Function QueryPerformanceFrequency Lib "kernel32" _
 
 ' Change to match your environment
 ' Option A: sqlite3.dll in C:\Windows\System32 (found by name, no path needed)
-Private Const DLL_PATH As String = "sqlite3.dll"
+'Private Const DLL_PATH As String = "sqlite3.dll"
 ' Option B: explicit path outside System32
-' Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
+Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"
 Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"
 
 ' Log file -- RunAllTests writes a copy here. Set "" to disable.
@@ -69,9 +69,9 @@ Private Const LOG_PATH As String = "C:\sqlite\test_results.log"
 ' ---------------------------------------------------------------------------
 ' Harness state  (Public so RunTests_xxx subs in .cls files can call in)
 ' ---------------------------------------------------------------------------
-Public  m_pass       As Long
-Public  m_fail       As Long
-Public  m_skip       As Long
+Public m_pass        As Long
+Public m_fail        As Long
+Public m_skip        As Long
 Private m_suite      As String
 Private m_suiteStart As LongPtr
 Private m_runStart   As LongPtr
@@ -113,7 +113,7 @@ End Function
 ' Suite lifecycle  (Public so .cls test subs can call StartSuite/EndSuite)
 ' ---------------------------------------------------------------------------
 Public Sub StartSuite(ByVal name As String)
-    m_suite      = name
+    m_suite = name
     m_suiteStart = QPC()
     Log ""
     Log "  [" & name & "]"
@@ -209,9 +209,9 @@ End Function
 ' RunAllTests
 '==============================================================================
 Public Sub RunAllTests()
-    m_pass      = 0
-    m_fail      = 0
-    m_skip      = 0
+    m_pass = 0
+    m_fail = 0
+    m_skip = 0
     m_failCount = 0
     EnsureFreq
     m_runStart = QPC()
@@ -360,7 +360,7 @@ Public Sub RunTest_DllLoad()
     SQLite3_CoreAPI.SQLite_Unload
     SQLite3_CoreAPI.SQLite_Load DLL_PATH
     AssertNoError "SQLite_Load"
-    AssertTrue    "SQLite_IsLoaded", SQLite3_CoreAPI.SQLite_IsLoaded()
+    AssertTrue "SQLite_IsLoaded", SQLite3_CoreAPI.SQLite_IsLoaded()
 
     Dim ver As String: ver = SQLite3_CoreAPI.SQLite_Version()
     AssertTrue "Version non-empty", Len(ver) > 0
@@ -383,9 +383,9 @@ Public Sub RunTest_OpenClose()
 
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH
-    AssertTrue  "IsOpen after OpenDatabase", conn.IsOpen
-    AssertTrue  "Handle non-zero", conn.Handle <> 0
-    AssertEqual "DbPath", conn.DbPath, DB_PATH
+    AssertTrue "IsOpen after OpenDatabase", conn.IsOpen
+    AssertTrue "Handle non-zero", conn.Handle <> 0
+    AssertEqual "DbPath", conn.dbPath, DB_PATH
 
     conn.CloseConnection
     AssertFalse "IsOpen after CloseConnection", conn.IsOpen
@@ -441,10 +441,10 @@ Public Sub RunTest_ScalarTypes()
     Set rs = conn.OpenRecordset("SELECT i, f, t, n FROM t_types;")
 
     AssertFalse "Not EOF", rs.EOF
-    AssertEqual "INTEGER value",  rs!i, 42
-    AssertTrue  "FLOAT close",    Abs(CDbl(rs!f) - 3.14) < 0.0001
-    AssertEqual "TEXT value",     rs!t, "hello"
-    AssertNull  "NULL value",     rs!n
+    AssertEqual "INTEGER value", rs!i, 42
+    AssertTrue "FLOAT close", Abs(CDbl(rs!f) - 3.14) < 0.0001
+    AssertEqual "TEXT value", rs!t, "hello"
+    AssertNull "NULL value", rs!N
 
     rs.CloseRecordset
     DropTable conn, "t_types"
@@ -471,8 +471,8 @@ Public Sub RunTest_NullHandling()
     AssertNull "a is NULL", rs!a
     AssertNull "b is NULL", rs!b
     rs.MoveNext
-    AssertEqual "a = 1",  rs!a, 1
-    AssertEqual "b = x",  rs!b, "x"
+    AssertEqual "a = 1", rs!a, 1
+    AssertEqual "b = x", rs!b, "x"
     rs.MoveNext
     AssertTrue "EOF after last", rs.EOF
 
@@ -537,14 +537,14 @@ Public Sub RunTest_PreparedStatements()
     Dim cmd As New SQLite3Command
     cmd.Prepare conn, "INSERT INTO t_prep VALUES (?, ?, ?);"
 
-    cmd.BindInt    1, 7
+    cmd.BindInt 1, 7
     cmd.BindDouble 2, 2.718
-    cmd.BindText   3, "Euler"
+    cmd.BindText 3, "Euler"
     cmd.Execute
     cmd.Reset
 
     cmd.BindNull 1
-    cmd.BindInt  2, 0
+    cmd.BindInt 2, 0
     cmd.BindNull 3
     cmd.Execute
     cmd.Reset
@@ -554,13 +554,13 @@ Public Sub RunTest_PreparedStatements()
     Dim rs As SQLite3Recordset
     Set rs = conn.OpenRecordset("SELECT i, f, t FROM t_prep ORDER BY rowid;")
 
-    AssertEqual "Row1 i",  rs!i, 7
-    AssertTrue  "Row1 f",  Abs(CDbl(rs!f) - 2.718) < 0.0001
-    AssertEqual "Row1 t",  rs!t, "Euler"
+    AssertEqual "Row1 i", rs!i, 7
+    AssertTrue "Row1 f", Abs(CDbl(rs!f) - 2.718) < 0.0001
+    AssertEqual "Row1 t", rs!t, "Euler"
     rs.MoveNext
 
-    AssertNull  "Row2 i null", rs!i
-    AssertNull  "Row2 t null", rs!t
+    AssertNull "Row2 i null", rs!i
+    AssertNull "Row2 t null", rs!t
     rs.CloseRecordset
 
     Dim cmd2 As New SQLite3Command
@@ -586,8 +586,8 @@ Public Sub RunTest_NamedParams()
 
     Dim cmd As New SQLite3Command
     cmd.Prepare conn, "INSERT INTO t_named VALUES (:a, :b, :c);"
-    cmd.BindIntByName    ":a", 99
-    cmd.BindTextByName   ":b", "ninety-nine"
+    cmd.BindIntByName ":a", 99
+    cmd.BindTextByName ":b", "ninety-nine"
     cmd.BindDoubleByName ":c", 9.9
     cmd.Execute
     cmd.Reset
@@ -601,9 +601,9 @@ Public Sub RunTest_NamedParams()
 
     ' -- Rebind and reuse --
     cmd.Prepare conn, "INSERT INTO t_named VALUES (:a, :b, :c);"
-    cmd.BindIntByName    ":a", 100
-    cmd.BindTextByName   ":b", "hundred"
-    cmd.BindDoubleByName ":c", 10.0
+    cmd.BindIntByName ":a", 100
+    cmd.BindTextByName ":b", "hundred"
+    cmd.BindDoubleByName ":c", 10#
     cmd.Execute
     AssertEqual "Named rebind row count=2", TableRowCount(conn, "t_named"), 2
 
@@ -646,21 +646,21 @@ Public Sub RunTest_Transactions()
 
     ' -- Second transaction --
     conn.BeginTransaction
-    AssertTrue  "Tx2: InTransaction", conn.InTransaction
+    AssertTrue "Tx2: InTransaction", conn.InTransaction
     conn.ExecSQL "INSERT INTO t_tx VALUES (101);"
     conn.CommitTransaction
     AssertEqual "Tx2: 101 rows", TableRowCount(conn, "t_tx"), 101
 
     ' -- Third transaction --
     conn.BeginTransaction
-    AssertTrue  "Tx3: InTransaction", conn.InTransaction
+    AssertTrue "Tx3: InTransaction", conn.InTransaction
     conn.ExecSQL "INSERT INTO t_tx VALUES (102);"
     conn.CommitTransaction
     AssertEqual "Tx3: 102 rows", TableRowCount(conn, "t_tx"), 102
 
     ' -- Fourth transaction --
     conn.BeginTransaction
-    AssertTrue  "Tx4: InTransaction", conn.InTransaction
+    AssertTrue "Tx4: InTransaction", conn.InTransaction
     conn.ExecSQL "INSERT INTO t_tx VALUES (103);"
     conn.CommitTransaction
     AssertEqual "Tx4: 103 rows", TableRowCount(conn, "t_tx"), 103
@@ -742,16 +742,16 @@ Public Sub RunTest_Recordset_Live()
 
     Dim sum As Long
     Do While Not rs.EOF
-        sum = sum + CLng(rs!n)
+        sum = sum + CLng(rs!N)
         rs.MoveNext
     Loop
     AssertEqual "Sum 1..5 = 15", sum, 15
-    AssertTrue  "EOF after last", rs.EOF
+    AssertTrue "EOF after last", rs.EOF
 
     Dim rs2 As SQLite3Recordset
     Set rs2 = conn.OpenRecordset("SELECT n FROM t_live WHERE n > 999;")
-    AssertTrue  "Empty rs BOF",  rs2.BOF
-    AssertTrue  "Empty rs EOF",  rs2.EOF
+    AssertTrue "Empty rs BOF", rs2.BOF
+    AssertTrue "Empty rs EOF", rs2.EOF
 
     rs.CloseRecordset
     rs2.CloseRecordset
@@ -779,28 +779,28 @@ Public Sub RunTest_Recordset_Vectorized()
     Set rs = conn.OpenRecordset("SELECT n, s FROM t_vec ORDER BY n;")
     Dim cnt As Long: cnt = rs.LoadAll()
 
-    AssertEqual "LoadAll returns 10",  cnt, 10
-    AssertEqual "RecordCount = 10",    rs.RecordCount, 10
-    AssertEqual "FieldCount = 2",      rs.FieldCount, 2
-    AssertFalse "Not EOF at start",    rs.EOF
+    AssertEqual "LoadAll returns 10", cnt, 10
+    AssertEqual "RecordCount = 10", rs.RecordCount, 10
+    AssertEqual "FieldCount = 2", rs.FieldCount, 2
+    AssertFalse "Not EOF at start", rs.EOF
 
     rs.MoveFirst
-    AssertEqual "First row n=1",  rs!n, 1
+    AssertEqual "First row n=1", rs!N, 1
     AssertEqual "First row s=r1", rs!s, "r1"
     rs.MoveLast
-    AssertEqual "Last row n=10", rs!n, 10
+    AssertEqual "Last row n=10", rs!N, 10
 
     rs.MoveFirst
     Dim sum As Long
     Do While Not rs.EOF
-        sum = sum + CLng(rs!n)
+        sum = sum + CLng(rs!N)
         rs.MoveNext
     Loop
     AssertEqual "Sum 1..10 = 55", sum, 55
 
     rs.MoveFirst
     AssertEqual "Field by index 0", rs.Item(0), 1
-    AssertEqual "Field by name n",  rs.Item("n"), 1
+    AssertEqual "Field by name n", rs.Item("n"), 1
 
     Dim names() As String: names = rs.ColumnNames()
     AssertEqual "ColName 0 = n", names(0), "n"
@@ -832,15 +832,15 @@ Public Sub RunTest_Recordset_GetRows()
     rs.LoadAll
 
     Dim pg1 As Variant: pg1 = rs.GetRows(3)
-    AssertEqual "GetRows page1 col dim",  UBound(pg1, 1), 0
-    AssertEqual "GetRows page1 row dim",  UBound(pg1, 2), 2
-    AssertEqual "GetRows page1 r0 = 1",   pg1(0, 0), 1
-    AssertEqual "GetRows page1 r2 = 3",   pg1(0, 2), 3
+    AssertEqual "GetRows page1 col dim", UBound(pg1, 1), 0
+    AssertEqual "GetRows page1 row dim", UBound(pg1, 2), 2
+    AssertEqual "GetRows page1 r0 = 1", pg1(0, 0), 1
+    AssertEqual "GetRows page1 r2 = 3", pg1(0, 2), 3
 
     Dim pg2 As Variant: pg2 = rs.GetRows(3)
-    AssertEqual "GetRows page2 r0 = 4",   pg2(0, 0), 4
-    AssertEqual "GetRows page2 r2 = 6",   pg2(0, 2), 6
-    AssertTrue  "EOF after two pages",     rs.EOF
+    AssertEqual "GetRows page2 r0 = 4", pg2(0, 0), 4
+    AssertEqual "GetRows page2 r2 = 6", pg2(0, 2), 6
+    AssertTrue "EOF after two pages", rs.EOF
 
     rs.CloseRecordset
     DropTable conn, "t_gr"
@@ -869,10 +869,10 @@ Public Sub RunTest_Recordset_ToMatrix()
     Dim mat As Variant: mat = rs.ToMatrix()
     AssertEqual "Matrix row dim", UBound(mat, 1), 2
     AssertEqual "Matrix col dim", UBound(mat, 2), 1
-    AssertEqual "mat(0,0) = 1",   mat(0, 0), 1
-    AssertTrue  "mat(0,1) ~1.1",  Abs(CDbl(mat(0, 1)) - 1.1) < 0.001
-    AssertEqual "mat(2,0) = 3",   mat(2, 0), 3
-    AssertTrue  "mat(2,1) ~3.3",  Abs(CDbl(mat(2, 1)) - 3.3) < 0.001
+    AssertEqual "mat(0,0) = 1", mat(0, 0), 1
+    AssertTrue "mat(0,1) ~1.1", Abs(CDbl(mat(0, 1)) - 1.1) < 0.001
+    AssertEqual "mat(2,0) = 3", mat(2, 0), 3
+    AssertTrue "mat(2,1) ~3.3", Abs(CDbl(mat(2, 1)) - 3.3) < 0.001
 
     rs.CloseRecordset
     DropTable conn, "t_mat"
@@ -986,7 +986,7 @@ Public Sub RunTest_Boundaries()
 
     cmd.BindInt 1, 2147483647: cmd.BindDouble 2, 1.7976931348623E+308
     cmd.Execute: cmd.Reset
-    cmd.BindInt 1, -2147483648: cmd.BindDouble 2, -1.7976931348623E+308
+    cmd.BindInt 1, -2147483648#: cmd.BindDouble 2, -1.7976931348623E+308
     cmd.Execute: cmd.Reset
     cmd.BindInt 1, 0: cmd.BindDouble 2, 0
     cmd.Execute: cmd.Reset
@@ -995,12 +995,12 @@ Public Sub RunTest_Boundaries()
     Set rs = conn.OpenRecordset("SELECT i, f FROM t_bounds ORDER BY rowid;")
     rs.LoadAll
 
-    AssertEqual "Max Long",   rs!i, 2147483647
+    AssertEqual "Max Long", rs!i, 2147483647
     rs.MoveNext
-    AssertEqual "Min Long",   rs!i, -2147483648
+    AssertEqual "Min Long", rs!i, -2147483648#
     rs.MoveNext
-    AssertEqual "Zero int",   rs!i, 0
-    AssertEqual "Zero float",  rs!f, 0
+    AssertEqual "Zero int", rs!i, 0
+    AssertEqual "Zero float", rs!f, 0
 
     rs.CloseRecordset
     DropTable conn, "t_bounds"
@@ -1071,7 +1071,7 @@ Public Sub RunTest_BLOB()
     conn.ExecSQL "CREATE TABLE t_blob (id INTEGER, data BLOB, label TEXT);"
 
     Dim small() As Byte: ReDim small(4)
-    small(0)=1: small(1)=2: small(2)=3: small(3)=255: small(4)=0
+    small(0) = 1: small(1) = 2: small(2) = 3: small(3) = 255: small(4) = 0
 
     Dim large() As Byte: ReDim large(999)
     Dim i As Long
@@ -1080,10 +1080,10 @@ Public Sub RunTest_BLOB()
     Dim cmd As New SQLite3Command
     cmd.Prepare conn, "INSERT INTO t_blob VALUES (?, ?, ?);"
 
-    cmd.BindInt  1, 1: cmd.BindBlob 2, small: cmd.BindText 3, "small"
+    cmd.BindInt 1, 1: cmd.BindBlob 2, small: cmd.BindText 3, "small"
     cmd.Execute: cmd.Reset
 
-    cmd.BindInt  1, 2: cmd.BindBlob 2, large: cmd.BindText 3, "large"
+    cmd.BindInt 1, 2: cmd.BindBlob 2, large: cmd.BindText 3, "large"
     cmd.Execute: cmd.Reset
 
     cmd.BindInt 1, 3: cmd.BindVariant 2, small: cmd.BindText 3, "variant"
@@ -1096,22 +1096,22 @@ Public Sub RunTest_BLOB()
 
     AssertFalse "Row1 not EOF", rs.EOF
     Dim v1 As Variant: v1 = rs!data
-    AssertTrue  "Row1 is byte array", VarType(v1) = (vbByte + vbArray)
+    AssertTrue "Row1 is byte array", VarType(v1) = (vbByte + vbArray)
     Dim b1() As Byte: b1 = v1
-    AssertEqual "Row1 len=5",    UBound(b1) - LBound(b1) + 1, 5
-    AssertEqual "Row1 b(0)=1",   b1(0), 1
+    AssertEqual "Row1 len=5", UBound(b1) - LBound(b1) + 1, 5
+    AssertEqual "Row1 b(0)=1", b1(0), 1
     AssertEqual "Row1 b(3)=255", b1(3), 255
 
     Dim ab() As Byte: ab = rs.Fields("data").AsBytes()
-    AssertEqual "AsBytes len=5",  UBound(ab) - LBound(ab) + 1, 5
+    AssertEqual "AsBytes len=5", UBound(ab) - LBound(ab) + 1, 5
     AssertEqual "AsBytes b(1)=2", ab(1), 2
 
     rs.MoveNext
     Dim v2 As Variant: v2 = rs!data
     Dim b2() As Byte: b2 = v2
-    AssertEqual "Row2 len=1000",   UBound(b2) - LBound(b2) + 1, 1000
+    AssertEqual "Row2 len=1000", UBound(b2) - LBound(b2) + 1, 1000
     AssertEqual "Row2 b(255)=255", b2(255), 255
-    AssertEqual "Row2 b(256)=0",   b2(256), 0
+    AssertEqual "Row2 b(256)=0", b2(256), 0
     rs.MoveNext: rs.CloseRecordset
 
     Dim rs2 As SQLite3Recordset
@@ -1259,7 +1259,7 @@ Public Sub RunTest_ReadOnly()
     Dim ro As New SQLite3Connection
     ro.OpenDatabase DB_PATH, DLL_PATH, 5000, False, 0, True
     AssertNoError "Open read-only"
-    AssertTrue  "IsReadOnly = True",  ro.IsReadOnly
+    AssertTrue "IsReadOnly = True", ro.IsReadOnly
     AssertEqual "Read-only row count", TableRowCount(ro, "t_ro"), 50
 
     Dim v As Variant
@@ -1342,8 +1342,8 @@ Public Sub RunTest_QueryPlan()
     Dim plan As Variant
     plan = GetQueryPlan(conn, "SELECT * FROM t_qp;")
     AssertNoError "GetQueryPlan no error"
-    AssertTrue  "Plan is array", IsArray(plan)
-    AssertTrue  "Plan has at least 1 row", UBound(plan, 1) >= 0
+    AssertTrue "Plan is array", IsArray(plan)
+    AssertTrue "Plan has at least 1 row", UBound(plan, 1) >= 0
     AssertEqual "Plan has 4 columns", UBound(plan, 2) + 1, 4
     Dim detail As String: detail = CStr(plan(0, 3))
     AssertTrue "Plan detail mentions t_qp", InStr(1, detail, "t_qp", vbTextCompare) > 0
@@ -1462,7 +1462,7 @@ Public Sub RunTest_QueryColumn()
 
     Dim names As Variant
     names = QueryColumn(conn, "SELECT name FROM qcol_test ORDER BY id;")
-    AssertEqual "QueryColumn name(0)", CStr(names(LBound(names))),     "Alice"
+    AssertEqual "QueryColumn name(0)", CStr(names(LBound(names))), "Alice"
     AssertEqual "QueryColumn name(1)", CStr(names(LBound(names) + 1)), "Bob"
     AssertEqual "QueryColumn name(2)", CStr(names(LBound(names) + 2)), "Carol"
 
@@ -1504,8 +1504,8 @@ Public Sub RunTest_Aggregates()
     AssertEqual "ScalarAgg SUM g1", total, 50
 
     Dim gc As Variant: gc = GroupByCount(conn, "t_agg", "grp")
-    AssertTrue "GroupByCount rows=3",  UBound(gc, 1) = 2
-    AssertTrue "GroupByCount cols=2",  UBound(gc, 2) = 1
+    AssertTrue "GroupByCount rows=3", UBound(gc, 1) = 2
+    AssertTrue "GroupByCount cols=2", UBound(gc, 2) = 1
     AssertEqual "GroupByCount each=4", gc(0, 1), 4
 
     Dim gs As Variant: gs = GroupBySum(conn, "t_agg", "grp", "val")
@@ -1515,9 +1515,9 @@ Public Sub RunTest_Aggregates()
     Dim ma As Variant
     ma = MultiAgg(conn, "t_agg", _
                   Array("COUNT(*) AS n", "SUM(val) AS s", "AVG(val) AS a", "MIN(val) AS lo"))
-    AssertEqual "MultiAgg n=12",   ma(0, 0), 12
-    AssertEqual "MultiAgg s=270",  ma(0, 1), 270
-    AssertEqual "MultiAgg lo=11",  ma(0, 3), 11
+    AssertEqual "MultiAgg n=12", ma(0, 0), 12
+    AssertEqual "MultiAgg s=270", ma(0, 1), 270
+    AssertEqual "MultiAgg lo=11", ma(0, 3), 11
 
     Dim mat As Variant
     mat = AggregateQuery(conn, "SELECT MAX(val), MIN(val) FROM t_agg;")
@@ -1526,18 +1526,18 @@ Public Sub RunTest_Aggregates()
 
     Dim rt As Variant
     rt = RunningTotal(conn, "t_agg", "rowid", "val", "grp='g1'")
-    AssertTrue "RunningTotal rows=4",   UBound(rt, 1) = 3
-    AssertEqual "RunningTotal cols=3",  UBound(rt, 2), 2
+    AssertTrue "RunningTotal rows=4", UBound(rt, 1) = 3
+    AssertEqual "RunningTotal cols=3", UBound(rt, 2), 2
     AssertEqual "RunningTotal last=50", rt(3, 2), 50
 
     ' -- GroupByAvg --
     Dim ga As Variant: ga = GroupByAvg(conn, "t_agg", "grp", "val")
-    AssertTrue  "GroupByAvg rows=3", UBound(ga, 1) = 2
-    AssertTrue  "GroupByAvg g1 avg between 11 and 15", CDbl(ga(2, 1)) >= 11 And CDbl(ga(2, 1)) <= 15
+    AssertTrue "GroupByAvg rows=3", UBound(ga, 1) = 2
+    AssertTrue "GroupByAvg g1 avg between 11 and 15", CDbl(ga(2, 1)) >= 11 And CDbl(ga(2, 1)) <= 15
 
     ' -- ScalarAgg AVG cross-check --
     Dim avgAll As Variant: avgAll = ScalarAgg(conn, "t_agg", "AVG(val)")
-    AssertTrue  "AVG 270/12=22.5", Abs(CDbl(avgAll) - 22.5) < 0.001
+    AssertTrue "AVG 270/12=22.5", Abs(CDbl(avgAll) - 22.5) < 0.001
 
     DropTable conn, "t_agg"
     conn.CloseConnection
@@ -1699,7 +1699,7 @@ Public Sub RunTest_Schema()
     conn.ExecSQL "CREATE VIEW v_schema AS SELECT id, name FROM t_schema_a;"
 
     Dim tbls As Variant: tbls = GetTableList(conn)
-    AssertTrue  "TableList is array", IsArray(tbls)
+    AssertTrue "TableList is array", IsArray(tbls)
     Dim foundA As Boolean, foundB As Boolean, r As Long
     For r = LBound(tbls) To UBound(tbls)
         If CStr(tbls(r)) = "t_schema_a" Then foundA = True
@@ -1717,10 +1717,10 @@ Public Sub RunTest_Schema()
     AssertTrue "ViewList has v_schema", foundV
 
     Dim cols As Variant: cols = GetColumnInfo(conn, "t_schema_a")
-    AssertTrue  "ColumnInfo is array",         IsArray(cols)
-    AssertEqual "ColumnInfo rows=3",           UBound(cols, 1) - LBound(cols, 1) + 1, 3
-    AssertEqual "ColumnInfo col0 name=id",     CStr(cols(LBound(cols, 1), 1)), "id"
-    AssertEqual "ColumnInfo col1 name=name",   CStr(cols(LBound(cols, 1) + 1, 1)), "name"
+    AssertTrue "ColumnInfo is array", IsArray(cols)
+    AssertEqual "ColumnInfo rows=3", UBound(cols, 1) - LBound(cols, 1) + 1, 3
+    AssertEqual "ColumnInfo col0 name=id", CStr(cols(LBound(cols, 1), 1)), "id"
+    AssertEqual "ColumnInfo col1 name=name", CStr(cols(LBound(cols, 1) + 1, 1)), "name"
 
     Dim idxs As Variant: idxs = GetIndexList(conn, "t_schema_a")
     AssertTrue "IndexList non-empty", Not IsEmpty(idxs)
@@ -1733,8 +1733,8 @@ Public Sub RunTest_Schema()
     AssertTrue "IndexList has ix_schema_a", foundIdx
 
     Dim fks As Variant: fks = GetForeignKeys(conn, "t_schema_b")
-    AssertTrue  "ForeignKeys non-empty", Not IsEmpty(fks)
-    AssertEqual "FK refs t_schema_a",  fks(0, 2), "t_schema_a"
+    AssertTrue "ForeignKeys non-empty", Not IsEmpty(fks)
+    AssertEqual "FK refs t_schema_a", fks(0, 2), "t_schema_a"
 
     Dim sql As String: sql = GetCreateSQL(conn, "t_schema_a")
     AssertTrue "CreateSQL non-empty", Len(sql) > 0
@@ -1742,7 +1742,7 @@ Public Sub RunTest_Schema()
 
     Dim dbInfo As Variant: dbInfo = GetDatabaseInfo(conn)
     AssertTrue "DatabaseInfo is matrix", IsArray(dbInfo)
-    AssertTrue "DatabaseInfo rows>5",    UBound(dbInfo, 1) >= 5
+    AssertTrue "DatabaseInfo rows>5", UBound(dbInfo, 1) >= 5
 
     conn.ExecSQL "DROP INDEX IF EXISTS ix_schema_a;"
     conn.ExecSQL "DROP VIEW  IF EXISTS v_schema;"
@@ -1809,7 +1809,7 @@ Public Sub RunTest_JSON()
     Dim arr As String
     arr = JSONGroupArray(conn, "t_json", "json_extract(data,'$.name')", "", "id")
     AssertTrue "JSONGroupArray non-empty", Len(arr) > 2
-    AssertTrue "JSONGroupArray has Bob",   InStr(arr, "Bob") > 0
+    AssertTrue "JSONGroupArray has Bob", InStr(arr, "Bob") > 0
 
     ' -- JSONGroupObject --
     Dim obj As String
@@ -1833,7 +1833,7 @@ Public Sub RunTest_JSON()
     conn.ExecSQL "INSERT INTO t_json VALUES (99, 'NOT VALID JSON');"
     AssertFalse "JSONValid=False with bad row", JSONValid(conn, "t_json", "data")
     conn.ExecSQL "DELETE FROM t_json WHERE id=99;"
-    AssertTrue  "JSONValid=True after deleting bad row", JSONValid(conn, "t_json", "data")
+    AssertTrue "JSONValid=True after deleting bad row", JSONValid(conn, "t_json", "data")
 
     ' -- JSONExtract missing key = Null --
     Dim vNull As Variant
@@ -1875,7 +1875,7 @@ Public Sub RunTest_Serialize()
         src.ExecSQL "INSERT INTO t_ser2 VALUES (" & i & ", " & (i * 3.14) & ");"
     Next i
     src.CommitTransaction
-    AssertEqual "Source t_ser rows",  TableRowCount(src, "t_ser"),  100
+    AssertEqual "Source t_ser rows", TableRowCount(src, "t_ser"), 100
     AssertEqual "Source t_ser2 rows", TableRowCount(src, "t_ser2"), 100
 
     Err.Clear
@@ -1895,7 +1895,7 @@ Public Sub RunTest_Serialize()
     AssertNoError "DeserializeDB no error"
     mem.ExecSQL "PRAGMA journal_mode=DELETE;"
     Err.Clear
-    AssertEqual "Deserialized t_ser row count",  TableRowCount(mem, "t_ser"),  100
+    AssertEqual "Deserialized t_ser row count", TableRowCount(mem, "t_ser"), 100
     AssertEqual "Deserialized t_ser2 row count", TableRowCount(mem, "t_ser2"), 100
     Dim v As Variant
     v = QueryScalar(mem, "SELECT name FROM t_ser ORDER BY rowid LIMIT 1 OFFSET 49;")
@@ -1910,9 +1910,9 @@ Public Sub RunTest_Serialize()
     AssertNoError "InMemoryClone no error"
     AssertEqual "Clone t_ser row count", TableRowCount(clone, "t_ser"), 100
     clone.ExecSQL "DROP TABLE t_ser;"
-    AssertFalse "Clone: t_ser gone",         TableExists(clone, "t_ser")
-    AssertTrue  "Source: t_ser still exists", TableExists(src,   "t_ser")
-    AssertTrue  "Clone: t_ser2 survives",     TableExists(clone, "t_ser2")
+    AssertFalse "Clone: t_ser gone", TableExists(clone, "t_ser")
+    AssertTrue "Source: t_ser still exists", TableExists(src, "t_ser")
+    AssertTrue "Clone: t_ser2 survives", TableExists(clone, "t_ser2")
     clone.CloseConnection
 
     ' -- Round-trip page size preserved --
@@ -2065,7 +2065,7 @@ Public Sub RunTest_Excel()
     AssertNoError "QueryToRange no error"
     AssertEqual "Header col1", CStr(ws.Cells(15, 1).Value), "id"
     AssertEqual "Header col2", CStr(ws.Cells(15, 2).Value), "sym"
-    AssertEqual "Data row1 id",  CLng(ws.Cells(16, 1).Value), 1
+    AssertEqual "Data row1 id", CLng(ws.Cells(16, 1).Value), 1
     AssertEqual "Data row10 id", CLng(ws.Cells(25, 1).Value), 10
 
     ' -- QueryToRange without headers --
@@ -2097,25 +2097,25 @@ Public Sub RunTest_Logger()
     Logger_Configure LOG_DEBUG, True, False, ""
     AssertNoError "Logger_Configure no error"
 
-    AssertTrue  "IsEnabled(DEBUG) when level=DEBUG", Logger_IsEnabled(LOG_DEBUG)
-    AssertTrue  "IsEnabled(INFO)  when level=DEBUG", Logger_IsEnabled(LOG_INFO)
-    AssertTrue  "IsEnabled(WARN)  when level=DEBUG", Logger_IsEnabled(LOG_WARN)
-    AssertTrue  "IsEnabled(ERROR) when level=DEBUG", Logger_IsEnabled(LOG_ERROR)
+    AssertTrue "IsEnabled(DEBUG) when level=DEBUG", Logger_IsEnabled(LOG_DEBUG)
+    AssertTrue "IsEnabled(INFO)  when level=DEBUG", Logger_IsEnabled(LOG_INFO)
+    AssertTrue "IsEnabled(WARN)  when level=DEBUG", Logger_IsEnabled(LOG_WARN)
+    AssertTrue "IsEnabled(ERROR) when level=DEBUG", Logger_IsEnabled(LOG_ERROR)
 
     ' -- SetLevel / GetLevel --
     Logger_SetLevel LOG_WARN
-    AssertFalse "IsEnabled(DEBUG) when level=WARN",  Logger_IsEnabled(LOG_DEBUG)
-    AssertFalse "IsEnabled(INFO)  when level=WARN",  Logger_IsEnabled(LOG_INFO)
-    AssertTrue  "IsEnabled(WARN)  when level=WARN",  Logger_IsEnabled(LOG_WARN)
-    AssertTrue  "IsEnabled(ERROR) when level=WARN",  Logger_IsEnabled(LOG_ERROR)
+    AssertFalse "IsEnabled(DEBUG) when level=WARN", Logger_IsEnabled(LOG_DEBUG)
+    AssertFalse "IsEnabled(INFO)  when level=WARN", Logger_IsEnabled(LOG_INFO)
+    AssertTrue "IsEnabled(WARN)  when level=WARN", Logger_IsEnabled(LOG_WARN)
+    AssertTrue "IsEnabled(ERROR) when level=WARN", Logger_IsEnabled(LOG_ERROR)
     AssertEqual "GetLevel returns WARN", Logger_GetLevel(), LOG_WARN
 
     ' -- Named wrapper calls --
     Logger_SetLevel LOG_DEBUG
     Err.Clear
     Logger_Debug "RunTest_Logger", "debug message"
-    Logger_Info  "RunTest_Logger", "info message"
-    Logger_Warn  "RunTest_Logger", "warn message"
+    Logger_Info "RunTest_Logger", "info message"
+    Logger_Warn "RunTest_Logger", "warn message"
     Logger_Error "RunTest_Logger", "error message (test)"
     AssertNoError "All named wrappers no error"
 
@@ -2131,8 +2131,8 @@ Public Sub RunTest_Logger()
     Logger_Configure LOG_INFO, False, True, logPath
     AssertNoError "Logger_Configure with file sink no error"
 
-    Logger_Info  "RunTest_Logger", "test line INFO"
-    Logger_Warn  "RunTest_Logger", "test line WARN"
+    Logger_Info "RunTest_Logger", "test line INFO"
+    Logger_Warn "RunTest_Logger", "test line WARN"
     Logger_Error "RunTest_Logger", "test line ERROR"
     Logger_Debug "RunTest_Logger", "test line DEBUG (filtered)"
     Logger_Close
@@ -2148,10 +2148,10 @@ Public Sub RunTest_Logger()
     Close #fileNum
     Err.Clear
 
-    AssertTrue  "Log file contains INFO line",   InStr(fileContent, "test line INFO")  > 0
-    AssertTrue  "Log file contains WARN line",   InStr(fileContent, "test line WARN")  > 0
-    AssertTrue  "Log file contains ERROR line",  InStr(fileContent, "test line ERROR") > 0
-    AssertFalse "Log file excludes DEBUG line",  InStr(fileContent, "test line DEBUG") > 0
+    AssertTrue "Log file contains INFO line", InStr(fileContent, "test line INFO") > 0
+    AssertTrue "Log file contains WARN line", InStr(fileContent, "test line WARN") > 0
+    AssertTrue "Log file contains ERROR line", InStr(fileContent, "test line ERROR") > 0
+    AssertFalse "Log file excludes DEBUG line", InStr(fileContent, "test line DEBUG") > 0
     Kill logPath: Err.Clear
 
     ' -- Re-configure clears state --
@@ -2175,7 +2175,7 @@ Public Sub RunTest_ListObject()
     On Error GoTo 0
     If ws Is Nothing Then
         Log "    INFO  No worksheet available -- ListObject suite skipped"
-        EndSuite: Exit Sub
+EndSuite:         Exit Sub
     End If
 
     Dim conn As New SQLite3Connection
@@ -2184,19 +2184,19 @@ Public Sub RunTest_ListObject()
 
     Dim startCell As Range
     Set startCell = ws.Cells(1000, 1)
-    startCell.Value = "Symbol": startCell.Offset(0, 1).Value = "Price"
-    startCell.Offset(1, 0).Value = "AAPL": startCell.Offset(1, 1).Value = 189.5
-    startCell.Offset(2, 0).Value = "MSFT": startCell.Offset(2, 1).Value = 420.1
-    startCell.Offset(3, 0).Value = "GOOG": startCell.Offset(3, 1).Value = 172.3
+    startCell.Value = "Symbol": startCell.offset(0, 1).Value = "Price"
+    startCell.offset(1, 0).Value = "AAPL": startCell.offset(1, 1).Value = 189.5
+    startCell.offset(2, 0).Value = "MSFT": startCell.offset(2, 1).Value = 420.1
+    startCell.offset(3, 0).Value = "GOOG": startCell.offset(3, 1).Value = 172.3
 
     Dim lo As ListObject
     On Error Resume Next
-    Set lo = ws.ListObjects.Add(xlSrcRange, ws.Range(startCell, startCell.Offset(3, 1)), , xlYes)
-    lo.Name = "TestListObj_SQLite"
+    Set lo = ws.ListObjects.Add(xlSrcRange, ws.Range(startCell, startCell.offset(3, 1)), , xlYes)
+    lo.name = "TestListObj_SQLite"
     On Error GoTo 0
     If lo Is Nothing Then
         Log "    INFO  Could not create ListObject -- suite skipped"
-        ws.Range(startCell, startCell.Offset(3, 1)).ClearContents
+        ws.Range(startCell, startCell.offset(3, 1)).ClearContents
         conn.CloseConnection: EndSuite: Exit Sub
     End If
 
@@ -2205,7 +2205,7 @@ Public Sub RunTest_ListObject()
     AssertNoError "ListObjectToTable no error"
     On Error GoTo 0
 
-    AssertTrue  "lo_test exists",    TableExists(conn, "lo_test")
+    AssertTrue "lo_test exists", TableExists(conn, "lo_test")
     AssertEqual "lo_test row count", TableRowCount(conn, "lo_test"), 3
 
     Dim v As Variant
@@ -2252,9 +2252,9 @@ Public Sub RunTest_Migrate()
     Dim applied As Boolean
     applied = ApplyMigration(conn, 1, _
         "CREATE TABLE IF NOT EXISTS mig_v1 (id INTEGER PRIMARY KEY, label TEXT);")
-    AssertTrue  "ApplyMigration 0->1 applied", applied
+    AssertTrue "ApplyMigration 0->1 applied", applied
     AssertEqual "Version is 1 after step 1", GetSchemaVersion(conn), 1
-    AssertTrue  "mig_v1 table exists", TableExists(conn, "mig_v1")
+    AssertTrue "mig_v1 table exists", TableExists(conn, "mig_v1")
 
     ' -- ApplyMigration idempotent (same version) --
     applied = ApplyMigration(conn, 1, "CREATE TABLE should_not_exist (x INTEGER);")
@@ -2265,7 +2265,7 @@ Public Sub RunTest_Migrate()
     DropTable conn, "mig_v2"
     applied = ApplyMigration(conn, 2, _
         "CREATE TABLE IF NOT EXISTS mig_v2 (id INTEGER PRIMARY KEY, val REAL);")
-    AssertTrue  "ApplyMigration 1->2 applied", applied
+    AssertTrue "ApplyMigration 1->2 applied", applied
     AssertEqual "Version is 2 after step 2", GetSchemaVersion(conn), 2
 
     ' -- MigrateAll from scratch --
@@ -2281,8 +2281,8 @@ Public Sub RunTest_Migrate()
     nApplied = MigrateAll(conn, steps)
     AssertEqual "MigrateAll applied 3 steps", nApplied, 3
     AssertEqual "Version is 3 after MigrateAll", GetSchemaVersion(conn), 3
-    AssertTrue  "mig_v1 present", TableExists(conn, "mig_v1")
-    AssertTrue  "mig_v3 present", TableExists(conn, "mig_v3")
+    AssertTrue "mig_v1 present", TableExists(conn, "mig_v1")
+    AssertTrue "mig_v3 present", TableExists(conn, "mig_v3")
 
     ' -- MigrateAll idempotent --
     nApplied = MigrateAll(conn, steps)
@@ -2356,7 +2356,7 @@ Public Sub RunTests_BulkInsert(ByVal dbPath As String, ByVal dllPath As String)
     v = QueryScalar(conn, "SELECT s FROM t_bulk WHERE i=500;")
     AssertEqual "Last row s", v, "row500"
     v = QueryScalar(conn, "SELECT f FROM t_bulk WHERE i=2;")
-    AssertTrue "Row2 f ~1.0", Abs(CDbl(v) - 1.0) < 0.001
+    AssertTrue "Row2 f ~1.0", Abs(CDbl(v) - 1#) < 0.001
 
     DropTable conn, "t_bulk"
     conn.CloseConnection
@@ -2385,7 +2385,7 @@ Public Sub RunTests_BulkInsert(ByVal dbPath As String, ByVal dllPath As String)
     bulk2.CloseInsert
 
     AssertEqual "TotalRowsInserted", bulk2.TotalRowsInserted, N
-    AssertEqual "Row count in DB",   TableRowCount(conn2, "t_mat2"), N
+    AssertEqual "Row count in DB", TableRowCount(conn2, "t_mat2"), N
     v = QueryScalar(conn2, "SELECT b FROM t_mat2 WHERE a=100;")
     AssertEqual "Mid row b", v, "m100"
 
@@ -2420,11 +2420,11 @@ Public Sub RunTests_BulkInsert(ByVal dbPath As String, ByVal dllPath As String)
     AssertEqual "Row 1 i", rs!i, 1
 
     Dim mat2 As Variant: mat2 = rs.ToMatrix()
-    AssertEqual "Matrix rows",   UBound(mat2, 1) + 1, NL
-    AssertEqual "Matrix cols",   UBound(mat2, 2) + 1, 3
-    AssertEqual "Last row i",    mat2(NL - 1, 0), NL
-    AssertTrue  "Last row f",    Abs(CDbl(mat2(NL - 1, 1)) - (NL * 1.5)) < 0.001
-    AssertEqual "Last row s",    mat2(NL - 1, 2), "s" & NL
+    AssertEqual "Matrix rows", UBound(mat2, 1) + 1, NL
+    AssertEqual "Matrix cols", UBound(mat2, 2) + 1, 3
+    AssertEqual "Last row i", mat2(NL - 1, 0), NL
+    AssertTrue "Last row f", Abs(CDbl(mat2(NL - 1, 1)) - (NL * 1.5)) < 0.001
+    AssertEqual "Last row s", mat2(NL - 1, 2), "s" & NL
 
     rs.CloseRecordset
 
@@ -2433,8 +2433,8 @@ Public Sub RunTests_BulkInsert(ByVal dbPath As String, ByVal dllPath As String)
     Set rs2 = conn3.OpenRecordset("SELECT i FROM t_large ORDER BY i LIMIT 100;")
     Dim gr As Variant: gr = rs2.GetRows(100)
     AssertEqual "GetRows(100) count", UBound(gr, 2) + 1, 100
-    AssertEqual "GetRows first value",  gr(0, 0), 1
-    AssertEqual "GetRows last value",   gr(0, 99), 100
+    AssertEqual "GetRows first value", gr(0, 0), 1
+    AssertEqual "GetRows last value", gr(0, 99), 100
     rs2.CloseRecordset
 
     DropTable conn3, "t_large"
@@ -2461,7 +2461,7 @@ Public Sub RunTests_Pool(ByVal dbPath As String, ByVal dllPath As String)
     pool.Initialize dbPath, dllPath, 3
 
     AssertEqual "Initial pool size = 1", pool.PoolSize, 1
-    AssertEqual "Initial active = 0",    pool.ActiveConnections, 0
+    AssertEqual "Initial active = 0", pool.ActiveConnections, 0
 
     Dim c1 As SQLite3Connection: Set c1 = pool.Acquire()
     Dim c2 As SQLite3Connection: Set c2 = pool.Acquire()
@@ -2469,7 +2469,7 @@ Public Sub RunTests_Pool(ByVal dbPath As String, ByVal dllPath As String)
 
     Dim rs As SQLite3Recordset
     Set rs = c1.OpenRecordset("SELECT n FROM t_pool;")
-    AssertEqual "Pool query result", rs!n, 42
+    AssertEqual "Pool query result", rs!N, 42
     rs.CloseRecordset
 
     pool.ReleaseConnection c1
@@ -2651,17 +2651,17 @@ Public Sub RunTests_BlobStream(ByVal dbPath As String, ByVal dllPath As String)
     Dim firstChunk() As Byte
     firstChunk = bsR.ReadAt(256, 0)
     AssertNoError "ReadAt 0"
-    AssertEqual "First byte = 0",             CInt(firstChunk(0)), 0
+    AssertEqual "First byte = 0", CInt(firstChunk(0)), 0
     AssertEqual "Last byte of first chunk = 255", CInt(firstChunk(255)), 255
 
     bsR.SeekTo 0
     Dim seqChunk() As Byte: seqChunk = bsR.ReadBytes(128)
     AssertEqual "Position after ReadBytes(128)", bsR.Position, 128
-    AssertEqual "Sequential byte 0",   CInt(seqChunk(0)), 0
+    AssertEqual "Sequential byte 0", CInt(seqChunk(0)), 0
     AssertEqual "Sequential byte 127", CInt(seqChunk(127)), 127
 
     Dim lastChunk() As Byte: lastChunk = bsR.ReadAt(256, 768)
-    AssertEqual "Last chunk byte 0 = 0",   CInt(lastChunk(0)), 0
+    AssertEqual "Last chunk byte 0 = 0", CInt(lastChunk(0)), 0
     AssertEqual "Last chunk byte 255 = 255", CInt(lastChunk(255)), 255
     bsR.CloseBlob
 
