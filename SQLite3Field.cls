@@ -11,7 +11,7 @@ Attribute VB_Exposed = False
 ' SQLite3Field.cls  -  ADO-style Field object (64-bit only)
 ' Zero-allocation: value reads directly against the live sqlite3_stmt*
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. Name, Ordinal, Value (default member), AsString,
@@ -24,6 +24,8 @@ Attribute VB_Exposed = False
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -79,7 +81,7 @@ Attribute Value.VB_UserMemId = 0
         Case SQLITE_FLOAT
             Value = sqlite3_column_double(m_pStmt, m_ordinal)
         Case SQLITE_TEXT
-            Value = SQLite3_API.PtrToStringA(sqlite3_column_text(m_pStmt, m_ordinal))
+            Value = SQLite3_CoreAPI.PtrToStringA(sqlite3_column_text(m_pStmt, m_ordinal))
         Case SQLITE_BLOB
             Value = ReadBlob()
         Case Else
@@ -91,7 +93,7 @@ End Property
 Public Property Get AsString() As String
     Dim p As LongPtr
     p = sqlite3_column_text(m_pStmt, m_ordinal)
-    If p <> 0 Then AsString = SQLite3_API.PtrToStringA(p)
+    If p <> 0 Then AsString = SQLite3_CoreAPI.PtrToStringA(p)
 End Property
 
 Public Property Get AsLong() As Long
@@ -121,7 +123,7 @@ End Property
 Public Property Get AsBytes() As Byte()
     Dim pBlob As LongPtr: pBlob = sqlite3_column_blob(m_pStmt, m_ordinal)
     Dim nBytes As Long:   nBytes = sqlite3_column_bytes(m_pStmt, m_ordinal)
-    AsBytes = SQLite3_API.BlobToBytes(pBlob, nBytes)
+    AsBytes = SQLite3_CoreAPI.BlobToBytes(pBlob, nBytes)
 End Property
 
 ' Internal: refresh stmt pointer on MoveNext (called by SQLite3Fields)
@@ -136,5 +138,5 @@ Private Function ReadBlob() As Variant
     Dim pBlob  As LongPtr: pBlob  = sqlite3_column_blob(m_pStmt, m_ordinal)
     Dim nBytes As Long:    nBytes = sqlite3_column_bytes(m_pStmt, m_ordinal)
     If nBytes = 0 Then ReadBlob = Empty: Exit Function
-    ReadBlob = SQLite3_API.BlobToBytes(pBlob, nBytes)
+    ReadBlob = SQLite3_CoreAPI.BlobToBytes(pBlob, nBytes)
 End Function

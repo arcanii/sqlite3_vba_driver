@@ -26,7 +26,7 @@ Attribute VB_Exposed = False
 ' Or feed a 2-D Variant array directly:
 '   bulk.AppendMatrix data2D   ' (rowCount, colCount)
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. AppendRow, AppendMatrix, transaction batching,
@@ -39,6 +39,11 @@ Attribute VB_Exposed = False
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
+
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -165,7 +170,7 @@ End Sub
 Public Sub CloseInsert()
     If Not m_isOpen Then Exit Sub
     m_isOpen = False
-    If Not SQLite3_API.SQLite_IsLoaded() Then
+    If Not SQLite3_CoreAPI.SQLite_IsLoaded() Then
         Set m_cmd  = Nothing
         Set m_conn = Nothing
         Exit Sub

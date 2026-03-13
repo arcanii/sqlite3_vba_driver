@@ -42,12 +42,17 @@ Attribute VB_Exposed = False
 '   Loop
 '   bs.CloseBlob
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.4 - Initial release.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'   0.1.7 - Module reference updated from SQLite3_API to SQLite3_CoreAPI.
+'            No functional changes.
+
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -98,9 +103,9 @@ Public Sub OpenBlob(ByVal conn As SQLite3Connection, _
                      Optional ByVal schema As String = "main")
     If m_isOpen Then CloseBlob
 
-    Dim schBytes()  As Byte: schBytes  = SQLite3_API.ToUTF8(schema)
-    Dim tblBytes()  As Byte: tblBytes  = SQLite3_API.ToUTF8(tableName)
-    Dim colBytes()  As Byte: colBytes  = SQLite3_API.ToUTF8(columnName)
+    Dim schBytes()  As Byte: schBytes  = SQLite3_CoreAPI.ToUTF8(schema)
+    Dim tblBytes()  As Byte: tblBytes  = SQLite3_CoreAPI.ToUTF8(tableName)
+    Dim colBytes()  As Byte: colBytes  = SQLite3_CoreAPI.ToUTF8(columnName)
     Dim flags As Long:       flags     = IIf(readWrite, 1, 0)
 
     Dim rc As Long

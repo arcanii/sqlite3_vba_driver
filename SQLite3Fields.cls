@@ -11,7 +11,7 @@ Attribute VB_Exposed = False
 ' SQLite3Fields.cls  -  ADO-style Fields collection (64-bit only)
 ' Enables: rs.Fields("Name").Value / rs.Fields(0).Value / rs!ColumnName
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. Case-insensitive Dictionary name index,
@@ -22,6 +22,8 @@ Attribute VB_Exposed = False
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -58,7 +60,7 @@ Friend Sub BuildFields(ByVal pStmt As LongPtr, ByVal colCount As Long)
     For i = 0 To colCount - 1
         Set m_fields(i) = New SQLite3Field
         Dim colName As String
-        colName = SQLite3_API.PtrToStringA(sqlite3_column_name(pStmt, i))
+        colName = SQLite3_CoreAPI.PtrToStringA(sqlite3_column_name(pStmt, i))
         m_fields(i).InitField colName, i, pStmt
         m_nameIndex(colName) = i
     Next i

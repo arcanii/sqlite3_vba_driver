@@ -27,12 +27,17 @@ Attribute VB_Exposed = False
 '   Loop
 '   bak.CloseBackup
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.4 - Initial release.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'   0.1.7 - Module reference updated from SQLite3_API to SQLite3_CoreAPI.
+'            No functional changes.
+
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -104,7 +109,7 @@ Public Sub OpenBackup(ByVal srcConn As SQLite3Connection, _
 
     ' Open destination database
     Dim pathBytes() As Byte
-    pathBytes = SQLite3_API.ToUTF8(destPath)
+    pathBytes = SQLite3_CoreAPI.ToUTF8(destPath)
     Dim flags As Long
     flags = SQLITE_OPEN_READWRITE Or SQLITE_OPEN_CREATE Or SQLITE_OPEN_FULLMUTEX
     Dim rc As Long
@@ -115,8 +120,8 @@ Public Sub OpenBackup(ByVal srcConn As SQLite3Connection, _
     End If
 
     ' Convert schema names to UTF-8
-    Dim srcSchBytes() As Byte:  srcSchBytes  = SQLite3_API.ToUTF8(srcSchema)
-    Dim destSchBytes() As Byte: destSchBytes = SQLite3_API.ToUTF8(destSchema)
+    Dim srcSchBytes() As Byte:  srcSchBytes  = SQLite3_CoreAPI.ToUTF8(srcSchema)
+    Dim destSchBytes() As Byte: destSchBytes = SQLite3_CoreAPI.ToUTF8(destSchema)
 
     ' Init backup -- note arg order: dest first, then source
     m_pBackup = sqlite3_backup_init( _
@@ -124,7 +129,7 @@ Public Sub OpenBackup(ByVal srcConn As SQLite3Connection, _
         srcConn.Handle, VarPtr(srcSchBytes(0)))
 
     If m_pBackup = 0 Then
-        m_lastError = SQLite3_API.sqlite3_errmsg_str(m_pDestDb)
+        m_lastError = SQLite3_CoreAPI.sqlite3_errmsg_str(m_pDestDb)
         sqlite3_close m_pDestDb
         m_pDestDb = 0
         Err.Raise vbObjectError + 501, "SQLite3Backup.OpenBackup", _

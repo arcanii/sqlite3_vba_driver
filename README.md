@@ -23,8 +23,9 @@ TLDR Section (for those who have no attention span)
    - `Private Const DLL_PATH As String = "C:\sqlite\sqlite3.dll"` (or just `"sqlite3.dll"` if you used System32)
    - `Private Const DB_PATH  As String = "C:\sqlite\driver_test.db"`
    - `Private Const LOG_PATH As String = "C:\sqlite\test_results.log"` (set to `""` to disable)
-8. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
-9. All 415 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
+8. Enable "Trust access to the VBA project object model": `File → Options → Trust Center → Trust Center Settings → Macro Settings` — tick the checkbox. This lets the test runner detect which optional `.cls` files you have imported, so it can skip those suites gracefully. Without it you'll get a permissions error.
+9. Open the Immediate window (`Ctrl+G`), type `RunAllTests` and press Enter.
+10. All 434 tests should pass. Results are printed to the Immediate window **and** written to `LOG_PATH`.
 
 ---
 
@@ -32,6 +33,7 @@ Versions
 =======
 | Version | Date           | Tests | Pass | Highlights |
 |---------|----------------|-------|------|------------|
+| 0.1.7 | 14 March, 2026 |  434  |  434 | Module consolidation (23 → 13 files): `SQLite3_CoreAPI.bas` + `SQLite3_Driver.bas`; `ClassAvailable()` via `VBProject.VBComponents`; full test suite restoration and expansion |
 | 0.1.6 | 12 March, 2026 |  415  |  415 | conn.Tag, ExecScriptFile, QueryColumn, ListObjectToTable, SQLite3_Migrate |
 | 0.1.5 | 12 March, 2026 |  365  |  365 | Excel integration, EXPLAIN QUERY PLAN, read-only connections, Checkpoint(), QPC LRU fix, SerializeDB auto-checkpoint, structured logging |
 | 0.1.4 | 12 March, 2026 |  305  |  305 | Online Backup API, incremental BLOB I/O, serialize/deserialize, diagnostics, file log output |
@@ -71,6 +73,30 @@ System32 DLLs get "known DLL" treatment — Defender does not re-scan them at ru
 4. Add a **Folder** exclusion for the folder containing `sqlite3.dll` (e.g. `C:\sqlite\`)
 
 The DLL path constant in your VBA is unchanged. Defender skips that folder entirely.
+
+---
+
+## What's New in 0.1.7
+
+### Module consolidation — 23 files → 13 files
+
+The biggest change in this release is housekeeping. The three Core API modules
+(`SQLite3_API.bas`, `SQLite3_API_Ext.bas`, `SQLite3_Helpers.bas`) are merged into a single
+**`SQLite3_CoreAPI.bas`**. The nine feature modules (`SQLite3_Aggregates.bas`,
+`SQLite3_Diagnostics.bas`, `SQLite3_Excel.bas`, `SQLite3_FTS5.bas`, `SQLite3_JSON.bas`,
+`SQLite3_Logger.bas`, `SQLite3_Migrate.bas`, `SQLite3_Schema.bas`, `SQLite3_Serialize.bas`)
+are merged into a single **`SQLite3_Driver.bas`**. All public function names are
+unchanged — existing calling code requires no modifications.
+
+### SQLite3_Tests.bas
+
+- `ClassAvailable()` rewritten to use `VBProject.VBComponents` for robust detection of
+  optional class modules. Requires "Trust access to the VBA project object model" (see TLDR step 8).
+- `RunTests_BulkInsert`, `RunTests_Pool`, `RunTests_Backup`, `RunTests_BlobStream` dispatch
+  subs moved here from the individual feature modules (they no longer exist as separate files).
+- 19 new assertions across existing suites: deeper coverage of FTS5, JSON, Diagnostics,
+  Logger, Migrate, Transactions, Excel, Serialize, and more.
+- Total: **434 / 434**
 
 ---
 
@@ -120,6 +146,8 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 - Total: **415 / 415**
 
 ---
+
+## What's New in 0.1.5
 
 ### New modules
 
@@ -209,11 +237,11 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 | Script file execution | `conn.ExecScriptFile(path)` — run a multi-statement UTF-8 `.sql` file in one call |
 | QueryColumn | `QueryColumn(conn, sql)` — first column of every result row as a flat `Variant()` array |
 | ListObject import | `ListObjectToTable` — import an Excel structured Table into SQLite directly |
-| Schema versioning | `SQLite3_Migrate`: `GetSchemaVersion`, `SetSchemaVersion`, `ApplyMigration`, `MigrateAll` |
+| Schema versioning | `MigrateAll` / `ApplyMigration`: `GetSchemaVersion`, `SetSchemaVersion` |
 | WAL checkpoint | `conn.Checkpoint(mode)` — PASSIVE / FULL / RESTART / TRUNCATE |
 | Excel integration | `RangeToTable` (range→SQLite) and `QueryToRange` (SQL→worksheet) |
 | EXPLAIN QUERY PLAN | `GetQueryPlan(conn, sql)` returns plan nodes as a Variant matrix |
-| Structured logging | `SQLite3_Logger`: DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
+| Structured logging | DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
 | QPC benchmarking | `QueryPerformanceCounter` timing in every test suite and LRU cache |
 | File log output | `RunAllTests` writes a full copy of results to `LOG_PATH` |
 | Failed-test summary | All failures reprinted at the end of `RunAllTests` |
@@ -225,30 +253,19 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
 
 | File | Role |
 |------|------|
-| `SQLite3_API.bas` | DLL loader, 48 cached proc addresses, all SQLite wrappers via `DispCallFunc` |
-| `SQLite3_API_Ext.bas` | Auxiliary dispatch bridge; secondary DLL handle copy |
-| `SQLite3_Helpers.bas` | `QueryScalar`, `QueryColumn`, `TableExists`, `ViewExists`, `IndexExists`, `TableRowCount`, `RecordsetToRange`, `GetQueryPlan` |
+| `SQLite3_CoreAPI.bas` | DLL loader, 48 cached proc addresses, all SQLite wrappers via `DispCallFunc`, UTF-8 marshalling; public helpers: `QueryScalar`, `QueryColumn`, `TableExists`, `TableRowCount`, `GetQueryPlan`, `GetColumnInfo` |
+| `SQLite3_Driver.bas` | All feature logic in one module: Aggregates, Diagnostics, Excel, FTS5, JSON, Logger, Migrate, Schema, Serialize |
 | `SQLite3Connection.cls` | Open/close, WAL, mmap, 64-slot LRU cache (QPC), transactions, savepoints, interrupt, checkpoint, read-only mode, Tag, ExecScriptFile |
 | `SQLite3Recordset.cls` | Live and vectorized recordset, `GetRows()`, `ToMatrix()`, `rs!Field` |
 | `SQLite3Fields.cls` | Case-insensitive field collection, `For Each` enumerator |
 | `SQLite3Field.cls` | Zero-copy value reads; `Value`, `AsString`, `AsBytes`, `AsInt64` |
-| `SQLite3Command.cls` | Positional and named binding, `BindBlob`, `BindVariant`, `ExecuteScalar` |
+| `SQLite3Command.cls` | Positional and named binding, `BindBlob`, `BindVariant`, `ExecuteScalar`, `StmtHandle` |
 | `SQLite3BulkInsert.cls` | High-speed batch insert, `AppendRow`, `AppendMatrix` |
 | `SQLite3Pool.cls` | Connection pool, LRU reaping, auto-rollback on release, pre-warm |
 | `SQLite3Backup.cls` | Online Backup API — `BackupToFile`, `OpenBackup`, `Step`, `CloseBackup`, progress |
 | `SQLite3BlobStream.cls` | Incremental BLOB I/O — `OpenBlob`, `ReadAt`, `WriteAt`, `SeekTo` |
-| `SQLite3_Serialize.bas` | Serialize/deserialize — `SerializeDB`, `DeserializeDB`, `InMemoryClone` |
-| `SQLite3_Diagnostics.bas` | Runtime counters — `GetDbStatus`, `GetStmtStatus`, `DbStatusSummary` |
-| `SQLite3_Schema.bas` | Schema introspection — tables, columns, indexes, FKs, triggers, PRAGMA info |
-| `SQLite3_Aggregates.bas` | SQL aggregate and window function helpers |
-| `SQLite3_FTS5.bas` | FTS5 full-text search helpers |
-| `SQLite3_JSON.bas` | SQLite built-in JSON function wrappers (requires SQLite 3.38+) |
-| `SQLite3_Excel.bas` | Excel integration — `RangeToTable`, `ListObjectToTable`, `QueryToRange` |
-| `SQLite3_Migrate.bas` | Schema versioning — `GetSchemaVersion`, `SetSchemaVersion`, `ApplyMigration`, `MigrateAll` |
-| `SQLite3_Logger.bas` | Structured logging — DEBUG/INFO/WARN/ERROR/NONE, Immediate + file sinks |
+| `SQLite3_Tests.bas` | 44 suites, 434 assertions, `RunAllTests` entry point, QPC timing, file logging, failure summary |
 | `SQLite3_Examples.bas` | Annotated usage examples for every feature |
-| `SQLite3_Tests.bas` | 415-test automated suite with QPC timing, file logging, and failure summary |
-| `Test-SQLite3-VBA-Driver.xlsm` | Template Excel workbook with all VBA pre-loaded |
 
 ---
 
@@ -260,6 +277,7 @@ The DLL path constant in your VBA is unchanged. Defender skips that folder entir
   - FTS5, JSON, backup, and serialize are enabled in all official precompiled binaries
   - Serialize/deserialize requires SQLite 3.23.0 or later (released 2018 — all current builds qualify)
 - **Microsoft Scripting Runtime** reference (for `Dictionary` used in `SQLite3Fields`)
+- **Trust access to the VBA project object model** enabled (for `ClassAvailable()` in `SQLite3_Tests.bas`)
 
 ---
 
@@ -274,35 +292,38 @@ Copy `sqlite3.dll` (64-bit) to a stable path. The recommended location is
 ### 2. Import the VBA modules
 
 Open the Visual Basic Editor (`Alt+F11`), then for each file choose
-**File → Import File** (or drag-and-drop onto the Project Explorer):
-You only need the 7 core files, and the files for the features you want.
-To run all the tests, you need everything.
+**File → Import File** (or drag-and-drop onto the Project Explorer).
+Import `SQLite3_CoreAPI.bas` first. You only need the core files and the classes
+for features you want. To run all the tests, import everything.
+
 ```
- 1.  SQLite3_API.bas           ← Core
- 2.  SQLite3_API_Ext.bas       ← Core
- 3.  SQLite3_Helpers.bas       ← Core
- 4.  SQLite3_Schema.bas
- 5.  SQLite3_Aggregates.bas
- 6.  SQLite3_FTS5.bas
- 7.  SQLite3_JSON.bas
- 8.  SQLite3Field.cls          ← Core
- 9.  SQLite3Fields.cls         ← Core
-10.  SQLite3Command.cls
-11.  SQLite3Recordset.cls      ← Core
-12.  SQLite3Connection.cls     ← Core
-13.  SQLite3BulkInsert.cls
-14.  SQLite3Pool.cls
-15.  SQLite3Backup.cls
-16.  SQLite3BlobStream.cls
-17.  SQLite3_Serialize.bas
-18.  SQLite3_Diagnostics.bas
-19.  SQLite3_Examples.bas      ← for learning
-20.  SQLite3_Tests.bas         ← for testing
+ 1.  SQLite3_CoreAPI.bas       ← Core (import first)
+ 2.  SQLite3_Driver.bas        ← All features
+ 3.  SQLite3Field.cls          ← Core
+ 4.  SQLite3Fields.cls         ← Core
+ 5.  SQLite3Command.cls
+ 6.  SQLite3Recordset.cls      ← Core
+ 7.  SQLite3Connection.cls     ← Core
+ 8.  SQLite3BulkInsert.cls
+ 9.  SQLite3Pool.cls
+10.  SQLite3Backup.cls
+11.  SQLite3BlobStream.cls
+12.  SQLite3_Examples.bas      ← for learning
+13.  SQLite3_Tests.bas         ← for testing
 ```
 
 ### 3. Add the Scripting Runtime reference
 
 In the VBA Editor: **Tools → References → check "Microsoft Scripting Runtime"**
+
+### 4. Trust access to the VBA project object model
+
+`File → Options → Trust Center → Trust Center Settings → Macro Settings`
+→ check **Trust access to the VBA project object model**
+
+The test runner uses `VBProject.VBComponents` to detect which optional class
+modules you have imported and skips those suites gracefully. Without this setting
+you will get a permissions error when `RunAllTests` starts.
 
 ---
 
@@ -327,7 +348,7 @@ Expected output (abridged):
 ```
 ================================================================
 SQLite3 Driver Test Suite
-Started: 2026-03-12 14:22:07
+Started: 2026-03-14 09:41:03
 ================================================================
 
   [DllLoad]
@@ -360,7 +381,7 @@ Started: 2026-03-12 14:22:07
   ...
 
 ================================================================
-Results: 302 passed,  0 failed  (302 total)  1311.07 ms
+Results: 434 passed,  0 failed  (434 total)  1946.71 ms
 ================================================================
 
 Log written to: C:\sqlite\test_results.log
@@ -383,6 +404,10 @@ RunTest_Diagnostics     RunTest_Schema          RunTest_Savepoints
 RunTest_JSON            RunTest_Interrupt       RunTest_FTS5
 RunTest_Aggregates      RunTest_BLOB            RunTest_ConnectionPool
 RunTest_BulkInsert_AppendRow                    RunTest_Transactions
+RunTest_Tag             RunTest_ExecScriptFile  RunTest_QueryColumn
+RunTest_ListObject      RunTest_Migrate         RunTest_Logger
+RunTest_ReadOnly        RunTest_Checkpoint      RunTest_QueryPlan
+RunTest_Excel
 ```
 
 ---
@@ -490,16 +515,20 @@ bs.CloseBlob
 ### Serialize / deserialize
 
 ```vba
-' Snapshot a live DB to a byte array (requires SQLite 3.23+)
-Dim snap() As Byte: snap = SerializeDB(conn)
+' Snapshot to a byte array — use :memory: source for cleanest result
+' (a file DB opened by earlier code may be in WAL mode; :memory: is always clean)
+Dim src As New SQLite3Connection
+src.OpenDatabase ":memory:", DLL_PATH
+' ... populate src ...
+Dim snap() As Byte: snap = SerializeDB(src)
 
 ' Restore to a fresh in-memory connection
 Dim mem As New SQLite3Connection
 mem.OpenDatabase ":memory:", DLL_PATH, 5000, False
 DeserializeDB mem, snap
-' mem is now a complete independent copy of conn at that moment
+' mem is now a complete independent copy of src at that moment
 
-' Convenience: one-call clone
+' Convenience: one-call clone of any open connection
 Dim clone As SQLite3Connection
 Set clone = InMemoryClone(conn)
 ' clone is fully independent — mutations to conn don't affect clone, and vice versa
@@ -634,9 +663,9 @@ Debug.Print bulk.TotalRowsInserted & " rows inserted"
 ```
 VBA code
   +--> SQLite3Connection / SQLite3Command / SQLite3Recordset / ...
-         +--> SQLite3_API.bas
+         +--> SQLite3_CoreAPI.bas
                 +-- LoadLibraryW("sqlite3.dll")    <- once at first OpenDatabase
-                +-- GetProcAddress x 48            <- cached in m_procs(48)
+                +-- GetProcAddress x 48            <- cached in m_procs(47)
                 +--> DispCallFunc(0, m_procs(n), CC_CDECL, ...)  <- every call
                        +--> sqlite3.dll  (__cdecl ABI)
 ```
@@ -693,7 +722,7 @@ availability at startup and print `SKIP` gracefully on older builds.
 
 ## Diagnostics Reference
 
-### db_status constants (`SQLite3_Diagnostics.bas`)
+### db_status constants (`SQLite3_Driver.bas`)
 
 | Constant | Value | Meaning |
 |----------|-------|---------|
@@ -751,6 +780,9 @@ PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 - **JSON functions require SQLite 3.38+.** Both JSON and FTS5 test suites probe
   availability at startup and print `SKIP` gracefully on older builds.
 - **Serialize requires SQLite 3.23+** (released 2018). All current official binaries qualify.
+- **`RunAllTests` requires "Trust access to the VBA project object model"** — needed for
+  `ClassAvailable()` to detect optional class modules. Without it you get a permissions
+  error at startup; individual `RunTest_*` subs still work fine without it.
 
 ---
 
@@ -770,6 +802,3 @@ PRAGMA mmap_size          = <n>;          -- only if mmapSizeBytes > 0
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
-

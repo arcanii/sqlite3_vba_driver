@@ -3,7 +3,7 @@ Attribute VB_Name = "SQLite3_Examples"
 ' SQLite3_Examples.bas  -  Usage examples and integration tests (64-bit only)
 ' Run TestAll() to validate the complete setup.
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. BasicCRUD, VectorizedQuery, BulkInsert,
@@ -19,6 +19,8 @@ Attribute VB_Name = "SQLite3_Examples"
 '            Example_Excel, Example_Logger. Added all five to TestAll().
 '   0.1.6 - Added Example_Tag, Example_ExecScriptFile, Example_QueryColumn,
 '            Example_Migrate. Added all four to TestAll().
+'   0.1.7 - Module reference updated from SQLite3_API to SQLite3_CoreAPI.
+'            No functional changes.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -256,7 +258,7 @@ Public Sub Example_QuantDBTemplate()
     Dim conn As New SQLite3Connection
     conn.OpenDatabase DB_PATH, DLL_PATH, 5000, True, 512& * 1024 * 1024
 
-    Debug.Print "SQLite version: " & SQLite3_API.SQLite_Version()
+    Debug.Print "SQLite version: " & SQLite3_CoreAPI.SQLite_Version()
 
     conn.ExecSQL "CREATE TABLE IF NOT EXISTS price_history (" & _
                  "  symbol   TEXT NOT NULL," & _
@@ -725,15 +727,15 @@ Public Sub Diagnose()
     Debug.Print ""
     Debug.Print "Step 3: LoadLibrary?"
     On Error Resume Next
-    SQLite3_API.SQLite_Unload          ' start clean
-    SQLite3_API.SQLite_Load DLL_PATH
+    SQLite3_CoreAPI.SQLite_Unload          ' start clean
+    SQLite3_CoreAPI.SQLite_Load DLL_PATH
     If Err.Number <> 0 Then
         Debug.Print "  FAIL - " & Err.Description
         On Error GoTo 0
         Exit Sub
     End If
     On Error GoTo 0
-    Debug.Print "  OK   - DLL loaded. Version = " & SQLite3_API.SQLite_Version()
+    Debug.Print "  OK   - DLL loaded. Version = " & SQLite3_CoreAPI.SQLite_Version()
 
     ' ---- Step 4: Open the database -----------------------------------------
     Debug.Print ""

@@ -25,7 +25,7 @@ Attribute VB_Exposed = False
 '   .GetRows(n)                   return next n rows as 2-D Variant array
 '   .CloseRecordset               release resources
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. Live mode, LoadAll vectorized mode, GetRows,
@@ -40,6 +40,8 @@ Attribute VB_Exposed = False
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -146,7 +148,7 @@ Public Function LoadAll() As Long
     ' Capture column names from the first row
     If rc = SQLITE_ROW Then
         For c = 0 To m_colCount - 1
-            m_colNames(c) = SQLite3_API.PtrToStringA( _
+            m_colNames(c) = SQLite3_CoreAPI.PtrToStringA( _
                                 sqlite3_column_name(m_pStmt, c))
         Next c
     End If
@@ -165,12 +167,12 @@ Public Function LoadAll() As Long
                 Case SQLITE_FLOAT
                     m_data(c, m_rowCount) = sqlite3_column_double(m_pStmt, c)
                 Case SQLITE_TEXT
-                    m_data(c, m_rowCount) = SQLite3_API.PtrToStringA( _
+                    m_data(c, m_rowCount) = SQLite3_CoreAPI.PtrToStringA( _
                                              sqlite3_column_text(m_pStmt, c))
                 Case SQLITE_BLOB
                     Dim pBlob  As LongPtr: pBlob  = sqlite3_column_blob(m_pStmt, c)
                     Dim nBytes As Long:    nBytes = sqlite3_column_bytes(m_pStmt, c)
-                    m_data(c, m_rowCount) = SQLite3_API.BlobToBytes(pBlob, nBytes)
+                    m_data(c, m_rowCount) = SQLite3_CoreAPI.BlobToBytes(pBlob, nBytes)
                 Case Else
                     m_data(c, m_rowCount) = Null
             End Select
@@ -363,7 +365,7 @@ End Function
 ' Close and cleanup
 '==============================================================================
 Public Sub CloseRecordset()
-    If SQLite3_API.SQLite_IsLoaded() Then
+    If SQLite3_CoreAPI.SQLite_IsLoaded() Then
         If m_pStmt <> 0 Then
             sqlite3_reset m_pStmt
             sqlite3_clear_bindings m_pStmt

@@ -25,7 +25,7 @@ Attribute VB_Exposed = False
 '   ' ... use conn ...
 '   pool.ReleaseConnection conn
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. LRU idle reaping, auto-rollback on release,
@@ -39,6 +39,11 @@ Attribute VB_Exposed = False
 '   0.1.4 - No functional changes. Version stamp updated.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'   0.1.7 - Module reference updated from SQLite3_API to SQLite3_CoreAPI.
+'            No functional changes.
+
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)

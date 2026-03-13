@@ -12,7 +12,7 @@ Attribute VB_Exposed = False
 ' Features : WAL auto-enable, mmap, busy timeout, transaction helpers,
 '            64-slot LRU statement cache, last_insert_rowid, error surface
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. OpenDatabase, CloseConnection, WAL auto-enable,
@@ -131,9 +131,9 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
     If m_isOpen Then CloseConnection
 
     If Len(dllPath) > 0 Then m_dllPath = dllPath
-    If Not SQLite3_API.SQLite_IsLoaded() Then
+    If Not SQLite3_CoreAPI.SQLite_IsLoaded() Then
         If Len(m_dllPath) = 0 Then m_dllPath = ThisWorkbook.Path & "\sqlite3.dll"
-        SQLite3_API.SQLite_Load m_dllPath
+        SQLite3_CoreAPI.SQLite_Load m_dllPath
     End If
 
     m_dbPath     = dbPath
@@ -141,7 +141,7 @@ Public Sub OpenDatabase(ByVal dbPath As String, _
     m_isReadOnly = openReadOnly
 
     Dim pathBytes() As Byte
-    pathBytes = SQLite3_API.ToUTF8(dbPath)
+    pathBytes = SQLite3_CoreAPI.ToUTF8(dbPath)
 
     Dim flags As Long
     If openReadOnly Then
@@ -180,7 +180,7 @@ End Sub
 Public Sub CloseConnection()
     If Not m_isOpen Then Exit Sub
     m_isOpen = False
-    If Not SQLite3_API.SQLite_IsLoaded() Then
+    If Not SQLite3_CoreAPI.SQLite_IsLoaded() Then
         m_pDb = 0
         m_cacheCount = 0
         Exit Sub
@@ -259,7 +259,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
     ' Cache miss -- compile and store a new prepared statement
     Dim pStmt As LongPtr, pTail As LongPtr
     Dim sqlBytes() As Byte
-    sqlBytes = SQLite3_API.ToUTF8(sql)
+    sqlBytes = SQLite3_CoreAPI.ToUTF8(sql)
     Dim rc As Long
     rc = sqlite3_prepare_v2(m_pDb, VarPtr(sqlBytes(0)), -1, pStmt, pTail)
     CheckRC rc, "sqlite3_prepare_v2"
@@ -289,7 +289,7 @@ Friend Function GetCachedStatement(ByVal sql As String) As LongPtr
 End Function
 
 Private Sub ClearStatementCache()
-    If Not SQLite3_API.SQLite_IsLoaded() Then
+    If Not SQLite3_CoreAPI.SQLite_IsLoaded() Then
         m_cacheCount = 0
         Exit Sub
     End If
@@ -331,7 +331,7 @@ Public Sub ExecScriptFile(ByVal filePath As String)
     If Len(Trim(script)) = 0 Then Exit Sub
 
     ' Pass the whole script to sqlite3_exec -- it handles multiple statements
-    Dim sqlBytes() As Byte: sqlBytes = SQLite3_API.ToUTF8(script)
+    Dim sqlBytes() As Byte: sqlBytes = SQLite3_CoreAPI.ToUTF8(script)
     Dim pErr As LongPtr
     Dim rc As Long
     rc = sqlite3_exec(m_pDb, VarPtr(sqlBytes(0)), CLngPtr(0), CLngPtr(0), pErr)
@@ -352,7 +352,7 @@ End Sub
 Public Sub ExecSQL(ByVal sql As String)
     AssertOpen
     Dim sqlBytes() As Byte
-    sqlBytes = SQLite3_API.ToUTF8(sql)
+    sqlBytes = SQLite3_CoreAPI.ToUTF8(sql)
     Dim pErr As LongPtr
     Dim rc As Long
     rc = sqlite3_exec(m_pDb, VarPtr(sqlBytes(0)), CLngPtr(0), CLngPtr(0), pErr)
@@ -441,7 +441,7 @@ Public Function Checkpoint(Optional ByVal mode As String = "PASSIVE", _
         Case Else:       eMode = SQLITE_CHECKPOINT_PASSIVE
     End Select
 
-    Dim schBytes() As Byte: schBytes = SQLite3_API.ToUTF8(schema)
+    Dim schBytes() As Byte: schBytes = SQLite3_CoreAPI.ToUTF8(schema)
     Dim nLog As Long, nCkpt As Long
     Dim rc As Long
     rc = sqlite3_wal_checkpoint_v2(m_pDb, VarPtr(schBytes(0)), eMode, _

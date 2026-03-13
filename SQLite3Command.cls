@@ -23,7 +23,7 @@ Attribute VB_Exposed = False
 '   cmd.BindTextByName ":name", "Alice"
 '   cmd.BindIntByName  ":id",   7
 '
-' Version : 0.1.6
+' Version : 0.1.7
 '
 ' Version History:
 '   0.1.0 - Initial release. Prepare, positional and named binding,
@@ -36,6 +36,8 @@ Attribute VB_Exposed = False
 '   0.1.4 - Added StmtHandle property for use with SQLite3_Diagnostics.
 '   0.1.5 - No functional changes. Version stamp updated.
 '   0.1.6 - No functional changes. Version stamp updated.
+'   0.1.7 - Module renamed from SQLite3_API/SQLite3_API_Ext/SQLite3_Helpers to
+'            SQLite3_CoreAPI. No functional changes; all public symbols unchanged.
 '
 '
 '    Copyright (C) 2026  Bryan Mark (bryan.mark@gmail.com)
@@ -90,7 +92,7 @@ End Property
 
 Public Sub FinalizeStatement()
     If m_isPrepared And m_pStmt <> 0 Then
-        If SQLite3_API.SQLite_IsLoaded() Then
+        If SQLite3_CoreAPI.SQLite_IsLoaded() Then
             sqlite3_reset m_pStmt
             sqlite3_clear_bindings m_pStmt
         End If
@@ -106,7 +108,7 @@ End Sub
 Public Sub BindText(ByVal paramIdx As Long, ByVal val As String)
     AssertPrepared
     Dim buf() As Byte
-    buf = SQLite3_API.ToUTF8(val)
+    buf = SQLite3_CoreAPI.ToUTF8(val)
     Dim rc As Long
     rc = sqlite3_bind_text(m_pStmt, paramIdx, VarPtr(buf(0)), _
                            UBound(buf), SQLITE_TRANSIENT)
@@ -224,7 +226,7 @@ Public Function ExecuteScalar() As Variant
         Select Case sqlite3_column_type(m_pStmt, 0)
             Case SQLITE_INTEGER: ExecuteScalar = sqlite3_column_int(m_pStmt, 0)
             Case SQLITE_FLOAT:   ExecuteScalar = sqlite3_column_double(m_pStmt, 0)
-            Case SQLITE_TEXT:    ExecuteScalar = SQLite3_API.PtrToStringA( _
+            Case SQLITE_TEXT:    ExecuteScalar = SQLite3_CoreAPI.PtrToStringA( _
                                                    sqlite3_column_text(m_pStmt, 0))
             Case Else:           ExecuteScalar = Null
         End Select
@@ -275,7 +277,7 @@ End Sub
 ' Resolve a named parameter (:name / @name / $name) to its 1-based index.
 Private Function ParamIndex(ByVal paramName As String) As Long
     Dim nameBytes() As Byte
-    nameBytes = SQLite3_API.ToUTF8(paramName)
+    nameBytes = SQLite3_CoreAPI.ToUTF8(paramName)
     Dim idx As Long
     idx = sqlite3_bind_parameter_index(m_pStmt, VarPtr(nameBytes(0)))
     If idx = 0 Then
