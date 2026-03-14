@@ -3,11 +3,7 @@ SQLite3 VBA Driver
 Skip down to the TLDR section to get it working a.s.a.p. Please read the Security section — it explains a 100x slowdown that catches almost everyone the first time.
 
 **What is this?**<br/>
-A **very rich** VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party
-dependencies beyond the SQLite DLL itself. Every SQLite call goes through
-`DispCallFunc`, so the DLL path is configurable at runtime with no compile-time
-`Declare` statements. This tries to implement the full sqlite functionality set so you can use it in Excel (not tested with Word or Access, but I guess it should work)
-Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended in about 3 days (I am very impressed so far!)
+It is a **very rich** VBA SQLite3 driver for 64-bit Excel. No registered COM objects, no third-party dependencies beyond the SQLite DLL itself. It is **Great** for learning the advanced Database features the amazing engineers of the SQLite team have put in. Every SQLite call goes through `DispCallFunc`, so the DLL path is configurable at runtime with no compile-time `Declare` statements. This tries to implement the full sqlite functionality set so you can use it in Excel (not tested with Word or Access, but I guess it should work). Before you ask, this Project was developed in vibe with Claude Sonnet 4.6 Extended in about 3 days. I am very impressed so far with Claude.ai! The future is so bright we have to wear shades :sunglasses:
 
 ---
 
